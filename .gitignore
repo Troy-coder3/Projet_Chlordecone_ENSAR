@@ -4,7 +4,8 @@
 .httr-oauth
 .DS_Store
 .quarto
+BaseCLD2026.csv
+BaseCLD2026_clean.csv
 *.csv
 *.xlsx
-*.pdf
-*.html
+
