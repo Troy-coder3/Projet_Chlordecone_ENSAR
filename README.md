@@ -16,7 +16,7 @@ Ce dépôt contient l'intégralité des travaux réalisés dans le cadre du modu
 Le projet est structuré en deux phases majeures consultables en ligne :
 
 1.  **[Volet 1 : Préparation & Cleaning](https://troy-coder3.github.io/Projet_Chlordecone_ENSAR/preparation_chlordecone.html)** *Nettoyage, gestion des valeurs manquantes, structuration et ingénierie des données.*
-2.  **[Volet 2 : Analyse Statistique & ML](https://troy-coder3.github.io/Projet_Chlordecone_ENSAR/analyse_chlordecone.html)** *Exploration, Analyses multivariées (ACP/AFC), Clustering (K-means/CAH) et Aide à la décision.*
+2.  **[Volet 2 : Analyse Statistique](https://troy-coder3.github.io/Projet_Chlordecone_ENSAR/analyse_chlordecone.html)** *Exploration, Analyses multivariées (ACP/AFC), Clustering (K-means/CAH) et Aide à la décision.*
 
 ---
 
@@ -25,7 +25,7 @@ Le projet est structuré en deux phases majeures consultables en ligne :
 La **chlordécone** est un insecticide persistant dont l'usage historique aux Antilles a créé une crise sanitaire et environnementale majeure. Ce travail utilise des jeux de données réels pour :
 - **Identifier** les zones géographiques les plus contaminées.
 - **Caractériser** les profils de sols ou de populations via des méthodes de clustering.
-- **Aide à la Décision** recommandations basées sur les données pour l'orientation des politiques publiques.
+- **Aider à la prise de décision** avec des recommandations basées sur les données pour l'orientation des politiques publiques.
 
 ##  Plan des livrables
 
@@ -54,7 +54,7 @@ La **chlordécone** est un insecticide persistant dont l'usage historique aux An
 
 ```text
 ├── preparation_chlordecone.Rmd  # Code R de nettoyage (Volet 1)
-├── analyse_chlordecone.Rmd      # Code R d'analyse et ML (Volet 2)
+├── analyse_chlordecone.Rmd      # Code R d'analyse (Volet 2)
 ├── README.Rmd                  # Ce fichier
 ├── data/                       # Données brutes et transformées
 └── docs/                       # Rendu HTML pour GitHub Pages
