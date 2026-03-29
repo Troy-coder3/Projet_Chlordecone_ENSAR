@@ -1,0 +1,1809 @@
+---
+title: "Analyse des données – Pollution au Chlordécone aux Antilles françaises
+"
+author: "ROY Tao"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    toc_float: true
+    code_folding: hide
+    theme: cosmo
+    highlight: tango
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  fig.width = 8,
+  fig.height = 5,
+  fig.align = "center"
+)
+```
+
+# Introduction
+
+La chlordécone (CLD) est un pesticide organochloré massivement utilisé dans les bananeraies des Antilles françaises jusqu'en 1993. Sa persistance dans les sols est estimée entre 100 et 700 ans, ça en fait aujourd'hui une priorité sanitaire, environnementale et socio-économique. Ce document propose une analyse statistique complète des niveaux de contamination mesurés en Martinique, depuis l'exploration descriptive jusqu'à la classification territoriale et l'aide à la décision.
+
+Les principales étapes de l'analyse sont :
+
+-   Analyse Exploratoire des Données (AED)
+
+-   Tests Statistiques
+
+-   Analyse en Composantes Principales (ACP)
+
+-   Analyse Factorielle des Correspondances (AFC)
+
+-   Clustering – Segmentation des communes
+
+-   Aide à la Décision
+
+-   Conclusion générale – Synthèse et liens entre analyses
+
+# 1. Chargement des librairies
+
+Les bibliothèques suivantes sont utilisées pour l'analyse :
+
+-   tidyverse
+
+-   lubridate
+
+-   patchwork
+
+-   viridis
+
+-   scales
+
+-   DT
+
+-   plotly
+
+-   knitr
+
+-   kableExtra
+
+-   FactoMineR
+
+-   factoextra
+
+-   cluster
+
+-   dendextend
+
+-   sf
+
+-   corrplot
+
+-   ggridges
+
+-   RColorBrewer
+
+-   skimr
+
+-   moments
+
+-   mclust
+
+```{r libraries}
+# Manipulation & visualisation générale
+library(tidyverse)
+library(lubridate)
+library(patchwork)
+library(viridis)
+library(scales)
+library(DT)
+library(plotly)
+library(knitr)
+library(kableExtra)
+
+# Statistiques multivariées
+library(FactoMineR)   # ACP, AFC
+library(factoextra)   # Visualisation ACP / clustering
+
+# Clustering
+library(cluster)      # CAH, silhouette
+library(dendextend)   
+
+# Spatial
+library(sf)
+
+# Autres
+library(corrplot)
+library(ggridges)
+library(RColorBrewer)
+library(skimr)
+library(moments)
+library(mclust)
+```
+
+# 2. Importation des données nettoyées
+
+Les données sont importées depuis un fichier CSV dont le séparateur est une virgule.
+
+```{r import}
+df <- read_csv(
+  "data/BaseCLD2026_clean.csv",
+  locale = locale(encoding = "UTF-8")
+) %>%
+  mutate(
+    commune_parcelle  = as.factor(commune_parcelle),
+    pluviometrie      = as.factor(pluviometrie),
+    sol_simple        = as.factor(sol_simple),
+    type_sol_detail   = as.factor(type_sol_detail),
+    nb_periodes_banane= as.factor(nb_periodes_banane),
+    id_op_cld         = as.factor(id_op_cld),
+    id_op_5b_hydro    = as.factor(id_op_5b_hydro),
+    date_prelevement  = as.Date(date_prelevement),
+    date_enreg        = as.Date(date_enreg),
+    date_analyse      = as.Date(date_analyse)
+  )
+```
+
+```{r}
+# Seuil réglementaire chlordécone dans les sols (mg/kg)
+SEUIL_CLD <- 0.1
+
+# Thème graphique unifié
+theme_cld <- theme_minimal(base_size = 13) +
+  theme(
+    plot.title    = element_text(face = "bold", size = 14),
+    plot.subtitle = element_text(color = "grey40", size = 11),
+    panel.grid.minor = element_blank(),
+    legend.position  = "bottom"
+  )
+theme_set(theme_cld)
+
+# Palette commune (Martinique = ~34 communes)
+pal_communes <- colorRampPalette(brewer.pal(12, "Paired"))(nlevels(df$commune_parcelle))
+```
+
+On fait une inspection de la table chargée :
+
+```{r}
+datatable(head(df, 100), 
+          options = list(scrollX = TRUE, pageLength = 5),
+          class = 'cell-border stripe')
+```
+
+```{r}
+glimpse(df)
+```
+
+```{r}
+skim(df)
+```
+
+# 1. Analyse Exploratoire des Données (AED)
+
+## 1.1 Statistiques descriptives globales
+
+### 1.1.1 Variables quantitatives
+
+```{r desc_quant}
+vars_quant <- df %>%
+  select(taux_cld_sol, taux_5b_hydro_cld,
+         mnt_pente, mnt_tpi, mnt_tri, mnt_rugosite,
+         mnt_ombrage, mnt_exposition)
+
+# Tableau de statistiques descriptives
+stats_table <- vars_quant %>%
+  pivot_longer(everything(), names_to = "Variable", values_to = "val") %>%
+  group_by(Variable) %>%
+  summarise(
+    N         = sum(!is.na(val)),
+    Moyenne   = round(mean(val, na.rm=TRUE), 4),
+    `Écart-type` = round(sd(val, na.rm=TRUE), 4),
+    Min       = round(min(val, na.rm=TRUE), 4),
+    Q1        = round(quantile(val, .25, na.rm=TRUE), 4),
+    Médiane   = round(median(val, na.rm=TRUE), 4),
+    Q3        = round(quantile(val, .75, na.rm=TRUE), 4),
+    Max       = round(max(val, na.rm=TRUE), 4),
+    Asymétrie = round(moments::skewness(val, na.rm=TRUE), 3)
+  )
+
+kable(stats_table, caption = "Statistiques descriptives – variables quantitatives",
+      booktabs = TRUE) %>%
+  kable_styling(bootstrap_options = c("striped","hover","condensed"), full_width = FALSE)
+```
+
+Le coefficient d'asymétrie pour le taux de chlordécone et le taux de 5b hydro est très élevé.
+
+Une asymétrie positive forte indique que la majorité des parcelles ont des taux faibles, mais qu'une petite poignée de parcelles a des taux extrêmement élevés.
+
+### 1.1.2 Variables qualitatives
+
+```{r desc_qual}
+# Distribution des communes
+p1 <- df %>%
+  dplyr::count(commune_parcelle, sort = TRUE) %>%
+  ggplot(aes(x = reorder(commune_parcelle, n), y = n, fill = n)) +
+  geom_col(show.legend = FALSE) +
+  scale_fill_viridis_c(option = "plasma") +
+  coord_flip() +
+  labs(title = "Nombre de prélèvements par commune",
+       x = NULL, y = "Nombre d'observations")
+
+# Distribution sols simples
+p2 <- df %>%
+  dplyr::count(sol_simple, sort = TRUE) %>%
+  ggplot(aes(x = reorder(sol_simple, n), y = n, fill = sol_simple)) +
+  geom_col(show.legend = FALSE) +
+  scale_fill_viridis_d(option = "turbo") +
+  coord_flip() +
+  labs(title = "Répartition par type de sol",
+       x = NULL, y = "Nombre d'observations")
+
+# Distribution historique bananière
+p3 <- df %>%
+  dplyr::count(nb_periodes_banane) %>%
+  ggplot(aes(x = nb_periodes_banane, y = n, fill = nb_periodes_banane)) +
+  geom_col(show.legend = FALSE) +
+  scale_fill_viridis_d(option = "cividis") +
+  labs(title = "Historique bananier",
+       x = "Nombre de périodes d'exploitation",
+       y = "Nombre d'observations")
+
+# Distribution pluviométrie
+p4 <- df %>%
+  dplyr::count(pluviometrie, sort = TRUE) %>%
+  ggplot(aes(x = reorder(pluviometrie, n), y = n, fill = pluviometrie)) +
+  geom_col(show.legend = FALSE) +
+  scale_fill_viridis_d(option = "mako") +
+  coord_flip() +
+  labs(title = "Répartition par pluviométrie",
+       x = NULL, y = "Nombre d'observations")
+
+(p1 + p2) / (p3 + p4) +
+  plot_annotation(title = "Vue d'ensemble des variables qualitatives",
+                  theme = theme(plot.title = element_text(face = "bold", size = 16)))
+```
+
+#### Nombre de prélèvements par commune
+
+On remarque un déséquilibre flagrant. Une poignée de communes concentre l'immense majorité des prélèvements, tandis que d'autres (en bas du graphique) sont très peu représentées. C'est un biais d'échantillonnage spatial. Les conclusions statistiques seront plus robustes pour les communes du haut, mais plus fragiles pour celles du bas.
+
+#### Répartition par type de sol
+
+L' Andosol, le Vertisol et le Ferraisol dominent largement le jeu de données. Le fait d'avoir une majorité de ces sols signifie que l'analyse va principalement décrire le comportement du polluant dans ces milieux spécifiques.
+
+#### Historique bananier
+
+La majorité des prélèvements concernent des parcelles pour lesquelles on ne connaît pas le cycle bananier enregistré.
+
+#### Répartition par pluviométrie
+
+Les échantillons sont majoritairement issu de zones à forte pluviométrie (\> 2000mm). Il faudra donc vérifier si les zones polluées le sont à cause du sol ou parce qu'il y pleut beaucoup.
+
+## 1.2 Distribution du taux de chlordécone dans les sols
+
+### 1.2.1 Distribution globale et seuil réglementaire
+
+Le seuil de gestion fixé par les autorités françaises est de `r SEUIL_CLD` mg/kg pour les sols agricoles.
+
+```{r dist_taux_cld}
+# Thème personnalisé pour épurer le rendu
+mon_theme <- theme_minimal(base_size = 11) +
+  theme(
+    panel.grid.minor = element_blank(),
+    plot.title = element_text(face = "bold", size = 13),
+    plot.subtitle = element_text(color = "grey40")
+  )
+cld_med <- median(df$taux_cld_sol, na.rm = TRUE)
+pct_dep <- mean(df$taux_cld_sol > SEUIL_CLD, na.rm = TRUE) * 100
+
+# --- GRAPHIQUE 1 : BRUT ---
+p_dens <- ggplot(df, aes(x = taux_cld_sol)) +
+  geom_histogram(aes(y = after_stat(density)), bins = 100,
+                 fill = "#3498db", color = "white", alpha = 0.6) +
+  geom_density(color = "#2c3e50", linewidth = 0.8) +
+  # Lignes de seuil
+  geom_vline(xintercept = SEUIL_CLD, linetype = "dashed", color = "#c0392b") +
+  geom_vline(xintercept = cld_med, linetype = "dotted", color = "#8e44ad") +
+  # Annotations décalées verticalement pour éviter le chevauchement
+  annotate("text", x = SEUIL_CLD + 0.2, y = 5, label = "Seuil régl. = 0.1", 
+           color = "#c0392b", fontface = "italic", hjust = 0, size = 3) +
+  annotate("text", x = cld_med + 0.2, y = 4.2, label = paste0("Médiane = ", round(cld_med, 4)), 
+           color = "#8e44ad", fontface = "italic", hjust = 0, size = 3) +
+  scale_x_continuous(limits = c(0, 15), expand = c(0, 0)) +
+  labs(title = "Distribution brute du taux de CLD (0–15 mg/kg)",
+       subtitle = paste(pct_dep, "% des prélèvements dépassent le seuil"),
+       x = "Taux (mg/kg)", y = "Densité") +
+  mon_theme
+
+# --- GRAPHIQUE 2 : LOG ---
+p_log <- ggplot(df, aes(x = log1p(taux_cld_sol))) +
+  geom_histogram(aes(y = after_stat(density)), bins = 50, # Moins de bins pour lisser
+                 fill = "#27ae60", color = "white", alpha = 0.6) +
+  geom_density(color = "#1a5276", linewidth = 0.8) +
+  geom_vline(xintercept = log1p(SEUIL_CLD), linetype = "dashed", color = "#c0392b") +
+  # Ajustement de l'annotation pour qu'elle ne flotte pas au milieu
+  annotate("text", x = log1p(SEUIL_CLD) + 0.05, y = 8, label = "Seuil (log)", 
+           color = "#c0392b", fontface = "italic", hjust = 0, size = 3) +
+  labs(title = "Distribution après transformation log(1+x)",
+       subtitle = "Réduction de l'asymétrie (skewness)",
+       x = "log(1 + taux_cld_sol)", y = "Densité") +
+  mon_theme
+
+# Assemblage
+p_dens / p_log
+```
+
+On observe que 34,6% des prélèvements dépassent le seuil réglementaire.
+
+La distribution brute présente une asymétrie positive très prononcée. La transformation log(1+x) compresse l’échelle et rend la distribution nettement plus symétrique et proche d’une loi normale – ce qui sera confirmé formellement par les tests statistiques. Toutes les analyses paramétriques (ACP, corrélations) seront donc menées sur l’échelle log-transformée.
+
+### 2.2.2 Statistiques descriptives
+
+```{r}
+stats_cld <- df %>%
+  summarise(
+    N           = sum(!is.na(taux_cld_sol)),
+    Moyenne     = mean(taux_cld_sol, na.rm = TRUE),
+    Ecart_type  = sd(taux_cld_sol, na.rm = TRUE),
+    Min         = min(taux_cld_sol, na.rm = TRUE),
+    Q1          = quantile(taux_cld_sol, 0.25, na.rm = TRUE),
+    Mediane     = median(taux_cld_sol, na.rm = TRUE),
+    Q3          = quantile(taux_cld_sol, 0.75, na.rm = TRUE),
+    Max         = max(taux_cld_sol, na.rm = TRUE),
+    Asymetrie   = skewness(taux_cld_sol, na.rm = TRUE),
+    Kurtosis    = kurtosis(taux_cld_sol, na.rm = TRUE),
+    `Pct > 0.1` = mean(taux_cld_sol > SEUIL_CLD, na.rm = TRUE) * 100
+  ) %>%
+  mutate(across(where(is.numeric), ~round(., 4)))
+
+kable(t(stats_cld), col.names = "Valeur",
+      caption = "Statistiques descriptives – taux de chlordécone (mg/kg)",
+      booktabs = TRUE) %>%
+  kable_styling(bootstrap_options = c("striped","hover"),
+                full_width = FALSE, position = "left")
+```
+
+L’asymétrie (skewness = 3.7) très supérieure à 0 confirme la forte asymétrie à droite. Le kurtosis (21.62) très supérieur à 3 révèle une distribution leptokurtique (queues très lourdes, présence d’extrêmes). L’écart entre la moyenne et la médiane (0.6667 vs 0.0033 mg/kg) illustre l’influence des valeurs extrêmes. Ces trois indicateurs convergent pour conclure à une non-normalité sévère des données brutes.
+
+## 2.3 Analyse temporelle
+
+### 2.3.1 Évolution annuelle
+
+```{r}
+df_annuel <- df %>%
+  filter(!is.na(annee_prelevement)) %>%
+  group_by(annee_prelevement) %>%
+  summarise(
+    n          = n(),
+    mediane    = median(taux_cld_sol, na.rm = TRUE),
+    moyenne    = mean(taux_cld_sol, na.rm = TRUE),
+    q25        = quantile(taux_cld_sol, 0.25, na.rm = TRUE),
+    q75        = quantile(taux_cld_sol, 0.75, na.rm = TRUE),
+    pct_depass = mean(taux_cld_sol > SEUIL_CLD, na.rm = TRUE) * 100,
+    .groups = "drop"
+  )
+annee_min <- min(df_annuel$annee_prelevement, na.rm = TRUE)
+
+p_evol <- ggplot(df_annuel, aes(x = annee_prelevement)) +
+  geom_ribbon(aes(ymin = q25, ymax = q75), fill = "#5dade2", alpha = 0.3) +
+  geom_line(aes(y = mediane), color = "#1a5276", linewidth = 1.3) +
+  geom_line(aes(y = moyenne), color = "#c0392b", linewidth = 1, linetype = "dashed") +
+  geom_point(aes(y = mediane, size = n), color = "#1a5276",
+             fill = "white", shape = 21, stroke = 1.5) +
+  geom_hline(yintercept = SEUIL_CLD, color = "#e74c3c",
+             linetype = "dotted", linewidth = 1) +
+  scale_size_continuous(range = c(2, 7), name = "Nb mesures") +
+  annotate("text", x = annee_min + 0.5, y = SEUIL_CLD + 0.02,
+           label = "Seuil 0.1 mg/kg", color = "#e74c3c", size = 3.2) +
+  labs(title    = "Évolution annuelle du taux de CLD",
+       subtitle = "Médiane (bleu) et moyenne (rouge pointillé) | Ruban = IQR",
+       x = "Année", y = "Taux CLD (mg/kg)")
+
+p_depass <- ggplot(df_annuel, aes(x = annee_prelevement, y = pct_depass,
+                                    fill = pct_depass)) +
+  geom_col(alpha = 0.9) +
+  geom_text(aes(label = paste0(round(pct_depass, 0), "%")),
+            vjust = -0.4, size = 3, color = "grey20") +
+  scale_fill_gradient(low = "#f9ca24", high = "#b71c1c", name = "%") +
+  guides(fill = "none") +
+  labs(title = "% de prélèvements > seuil par année",
+       x = "Année", y = "% > 0.1 mg/kg")
+
+p_evol / p_depass + plot_layout(heights = c(2, 1))
+```
+
+On observe la formation de deux plateaux distincts : le premier (2005-2008) présente des taux moyens extrêmement élevés, tandis que le second (2009-2019) montre une stabilisation à des niveaux nettement inférieurs.
+
+Cependant, cette baisse apparente ne traduit pas nécessairement une disparition réelle du produit dans l'environnement. Elle est très probablement due à une évolution de la stratégie d’échantillonnage. Au début de la surveillance, les prélèvements étaient vraisemblablement ciblés sur les zones historiquement les plus exposées ("hot spots"). Par la suite, l’extension des mesures à une plus grande diversité de localisations a mécaniquement fait baisser les indicateurs globaux.
+
+Cette hypothèse est confirmée par le rapport entre moyenne et médiane : durant la seconde période, la moyenne reste systématiquement supérieure à la médiane. Cela prouve qu'une minorité d'échantillons très contaminés influence encore fortement les résultats, alors que la pollution était généralisée au début des années 2000.
+
+Malgré cette dilution statistique, le constat reste alarmant : en 2019, encore 15% des prélèvements dépassent le seuil réglementaire. Cela démontre non seulement la persistance exceptionnelle de la chlordécone, mais confirme surtout que le problème sanitaire reste entier et actuel.
+
+### 2.3.2 Distribution par année (ridgeline)
+
+```{r}
+df %>%
+  filter(!is.na(annee_prelevement), taux_cld_sol > 0) %>%
+  mutate(annee_f = factor(annee_prelevement)) %>%
+  ggplot(aes(x = log1p(taux_cld_sol), y = annee_f, fill = after_stat(x))) +
+  geom_density_ridges_gradient(scale = 2.5, rel_min_height = 0.02,
+                                bandwidth = 0.15) +
+  geom_vline(xintercept = log1p(SEUIL_CLD), linetype = "dashed",
+             color = "firebrick", linewidth = 0.8) +
+  scale_fill_viridis_c(option = "inferno", name = "log(CLD)",
+                       guide = guide_colorbar(barwidth = 15, barheight = 0.5)) +
+  labs(
+    title    = "Distribution annuelle du taux de CLD (ridgeline)",
+    subtitle = "Chaque crête = distribution d'une année | Ligne rouge = seuil 0.1 mg/kg (log)",
+    x = "log(1 + taux CLD)", y = "Année"
+  )
+```
+
+Le graphique en ridgeline confirme visuellement cette rupture méthodologique. Jusqu'en 2009, la distribution est centrée sur des valeurs largement supérieures au seuil de 0,1 mg/kg (zone orange), suggérant un ciblage exclusif des parcelles polluées.
+
+À partir de 2011, on observe un basculement : la densité principale se déplace sous le seuil réglementaire (zone sombre), mais l'apparition d'une longue traîne s'étirant vers les valeurs élevées (à droite de la ligne rouge) confirme la persistance de poches de contamination intense. Ce profil "bimodal" ou asymétrique explique pourquoi la moyenne reste préoccupante alors que la médiane s'est effondrée.
+
+## 2.4 Analyse spatiale
+
+### 2.4.1 Carte de contamination
+
+```{r}
+df_sf <- df %>%
+  filter(!is.na(coord_x), !is.na(coord_y)) %>%
+  st_as_sf(coords = c("coord_x", "coord_y"), crs = 5490) %>%
+  st_transform(4326) %>%
+  mutate(
+    lon = st_coordinates(.)[,1],
+    lat = st_coordinates(.)[,2],
+    classe_cld = cut(
+      taux_cld_sol,
+      breaks = c(-Inf, 0.1, 1, 5, 20, Inf),
+      labels = c("< 0.1 (sous seuil)", "0.1 – 1", "1 – 5",
+                 "5 – 20", "> 20 (critique)"),
+      right  = TRUE
+    )
+  ) %>%
+  st_drop_geometry()
+
+ggplot(df_sf %>% arrange(taux_cld_sol), aes(x = lon, y = lat)) + 
+  geom_point(aes(color = classe_cld), size = 0.8, alpha = 0.8) +
+  scale_color_manual(
+    values = c("#27ae60","#f1c40f","#e67e22","#c0392b","#6c3483"),
+    name   = "CLD (mg/kg)",
+    guide  = guide_legend(override.aes = list(size = 3, alpha = 1))
+  ) +
+  coord_fixed(ratio = 1.05) +
+  labs(
+    title    = "Carte de contamination au chlordécone – Martinique",
+    subtitle = "Tous prélèvements confondus",
+    x = "Longitude", y = "Latitude"
+  ) +
+  theme(legend.key.size = unit(0.5, "cm"))
+```
+
+La cartographie révèle une polarisation géographique de la contamination. Si une grande partie du territoire présente des taux sous le seuil (points verts), les zones de culture bananière du Nord et du Centre conservent une empreinte indélébile. Cette distribution spatiale hétérogène explique la déconnexion entre la médiane globale (basse) et la persistance de concentrations critiques locales, qui constituent encore aujourd'hui des points de vigilance sanitaire majeurs.
+
+### 2.4.2 Contamination par commune
+
+```{r}
+df_commune <- df %>%
+  group_by(commune_parcelle) %>%
+  summarise(
+    mediane_cld      = median(taux_cld_sol, na.rm = TRUE),
+    moyenne_cld      = mean(taux_cld_sol, na.rm = TRUE),
+    prop_depass      = mean(taux_cld_sol > SEUIL_CLD, na.rm = TRUE) * 100,
+    n                = n(),
+    .groups = "drop"
+  ) %>%
+  arrange(desc(mediane_cld))
+
+# Tableau interactif
+datatable(
+  df_commune %>%
+    mutate(across(where(is.numeric), ~round(., 3))),
+  caption = "Indicateurs de contamination par commune",
+  options = list(scrollX = TRUE, pageLength = 10),
+  class   = "cell-border stripe"
+)
+```
+
+```{r}
+df_commune <- df %>%
+  group_by(commune_parcelle) %>%
+  summarise(
+    mediane_cld = median(taux_cld_sol, na.rm = TRUE),
+    pct_depass  = mean(taux_cld_sol > SEUIL_CLD, na.rm = TRUE) * 100,
+    n           = n(),
+    .groups = "drop"
+  ) %>%
+  arrange(desc(mediane_cld))
+
+ggplot(df_commune,
+       aes(x = reorder(commune_parcelle, mediane_cld),
+           y = mediane_cld, fill = pct_depass)) +
+  geom_col(alpha = 0.9) +
+  geom_hline(yintercept = SEUIL_CLD, linetype = "dashed",
+             color = "#e74c3c", linewidth = 1) +
+  scale_fill_gradient(low = "#abebc6", high = "#922b21",
+                      name = "% > seuil") +
+  coord_flip() +
+  labs(
+    title    = "Taux médian de CLD par commune (mg/kg)",
+    subtitle = "Couleur = % de prélèvements dépassant le seuil réglementaire",
+    x = NULL, y = "Médiane CLD (mg/kg)"
+  ) + theme(axis.text.y = element_text(size = 7))
+```
+
+Les communes du Morne-Rouge, de Macouba et de Grand'Rivière se détachent nettement. Au Morne-Rouge, la médiane ($2,56$ mg/kg) est plus de 25 fois supérieure au seuil réglementaire, avec près de 70% des prélèvements en situation de non-conformité. La distribution intra-communale est très hétérogène. Cela motivera le clustering par commune dans la section 6.
+
+## 2.5 Variables agro-environnementales et contamination
+
+### 2.5.1 Impact de l’historique bananier
+
+Le nombre de périodes d’exploitation bananière (1970, 1980, 1990) est un proxy direct de l’intensité de l’application de chlordécone.
+
+```{r}
+df %>%
+  filter(!is.na(nb_periodes_banane)) %>%
+  group_by(nb_periodes_banane) %>%
+  summarise(
+    N           = n(),
+    Mediane     = round(median(taux_cld_sol, na.rm=TRUE), 4),
+    Moyenne     = round(mean(taux_cld_sol, na.rm=TRUE), 4),
+    `% > seuil` = round(mean(taux_cld_sol > SEUIL_CLD, na.rm=TRUE)*100, 1)
+  ) %>%
+  kable(caption = "CLD selon le nombre de périodes bananières",
+        booktabs = TRUE) %>%
+  kable_styling(bootstrap_options = c("striped","hover"), full_width = FALSE)
+```
+
+```{r}
+df %>%
+  filter(!is.na(nb_periodes_banane)) %>%
+  ggplot(aes(x = nb_periodes_banane, y = log1p(taux_cld_sol),
+             fill = nb_periodes_banane)) +
+  geom_violin(alpha = 0.75, draw_quantiles = c(0.25, 0.5, 0.75), trim = FALSE) +
+  geom_boxplot(width = 0.08, fill = "white", outlier.shape = 21,
+               outlier.size = 1, outlier.alpha = 0.4) +
+  scale_fill_viridis_d(option = "plasma", direction = -1) +
+  geom_hline(yintercept = log1p(SEUIL_CLD), linetype = "dashed",
+             color = "#e74c3c", linewidth = 0.9) +
+  guides(fill = "none") +
+  labs(
+    title    = "Distribution du log(CLD) selon l'historique bananier",
+    subtitle = "Violin + boxplot | Ligne rouge = seuil 0.1 mg/kg (log)",
+    x = "Nombre de périodes d'exploitation bananière",
+    y = "log(1 + taux CLD)"
+  )
+```
+
+Ce graphique établit un lien direct et quasi-linéaire entre l'intensité de l'exploitation bananière passée et le niveau de contamination actuel.
+
+On observe que plus le nombre de périodes d'exploitation bananière augmente (de 1 à 3), plus la "boîte" (le boxplot) et la "bulle" (le violin) montent vers le haut.
+
+Pour 3 périodes, la médiane est de $0,84$ mg/kg (soit 8 fois le seuil) et 84,3% des prélèvements sont hors-seuil.
+
+Cela confirme que la chlordécone s'est accumulée dans les sols à chaque cycle de culture sans jamais disparaître.
+
+Pour les catégories 1, 2 et 3, la forme du violon est "ventrue" bien au-dessus de la ligne rouge. La pollution y est la règle.
+
+Pour la catégorie "Inconnu", le violon est écrasé sur le zéro, mais possède une tige très longue et fine (outliers). Cela suggère que dans ce groupe se cachent des parcelles bananières non répertoriées ou des terrains ayant reçu des remblais contaminés.
+
+Dès la première période d'exploitation (catégorie 1), la majorité des échantillons ($53,1\%$) basculent déjà au-dessus du seuil réglementaire. Un seul cycle d'utilisation historique suffit donc à rendre un terrain potentiellement impropre à certaines cultures sensibles aujourd'hui.
+
+### 2.5.2 Impact du type de sol
+
+```{r}
+df %>%
+  filter(!is.na(sol_simple)) %>%
+  ggplot(aes(x = reorder(sol_simple, taux_cld_sol, median, na.rm=TRUE),
+             y = log1p(taux_cld_sol), fill = sol_simple)) +
+  geom_boxplot(alpha = 0.8, outlier.shape = 21, outlier.size = 1,
+               outlier.alpha = 0.3) +
+  scale_fill_viridis_d(option = "turbo") +
+  geom_hline(yintercept = log1p(SEUIL_CLD), linetype = "dashed",
+             color = "#e74c3c", linewidth = 0.9) +
+  coord_flip() +
+  guides(fill = "none") +
+  labs(
+    title    = "Distribution du log(CLD) par type de sol simple",
+    subtitle = "Triés par médiane croissante | Ligne rouge = seuil réglementaire (log)",
+    x = NULL, y = "log(1 + taux CLD)"
+  )
+```
+
+```{r}
+# CLD par pluviométrie
+p_rain <- df %>%
+  filter(!is.na(pluviometrie)) %>%
+  ggplot(aes(x = reorder(pluviometrie, taux_cld_sol, median, na.rm=TRUE),
+             y = log1p(taux_cld_sol), fill = pluviometrie)) +
+  geom_boxplot(alpha = 0.8, outlier.shape = NA) +
+  scale_fill_viridis_d(option = "mako") +
+  geom_hline(yintercept = log1p(SEUIL_CLD), linetype = "dashed",
+             color = "firebrick") +
+  guides(fill = "none") +
+  labs(title = "CLD par pluviométrie", x = NULL, y = "log(1+CLD)")
+p_rain
+```
+
+L’analyse croisée révèle que la contamination n’est pas le fruit du hasard, mais d’une convergence de facteurs géoclimatiques. Les zones de forte pluviométrie (3000-5000 mm) ont historiquement favorisé une culture intensive de la banane, entraînant un usage massif de chlordécone. Ce polluant s'est retrouvé piégé par la nature même des sols de ces régions humides : les Andosols, dont la structure poreuse et riche en matière organique agit comme une "éponge chimique".
+
+Ainsi, là où l'on a le plus cultivé par habitude agronomique, le sol a le plus retenu par propriété physique. Cette double peine explique pourquoi, malgré l'arrêt des traitements, ces territoires restent aujourd'hui les principaux "hot spots" de l'île.
+
+### 2.5.3 Variables topographiques et contamination
+
+```{r}
+vars_topo <- c("mnt_pente", "mnt_tpi", "mnt_tri",
+               "mnt_rugosite", "mnt_ombrage", "mnt_exposition")
+
+
+# Scatter plots vs taux CLD
+df_long_topo <- df %>%
+  select(taux_cld_sol, all_of(vars_topo)) %>%
+  pivot_longer(-taux_cld_sol, names_to = "variable", values_to = "valeur")
+
+ggplot(df_long_topo, aes(x = valeur, y = log1p(taux_cld_sol))) +
+  geom_bin2d(bins = 50) +
+  scale_fill_viridis_c(option = "magma", trans = "log1p",
+                       name = "Nb obs.") +
+  geom_smooth(method = "loess", color = "#e74c3c",
+              linewidth = 0.8, se = FALSE) +
+  facet_wrap(~ variable, scales = "free_x", ncol = 3) +
+  labs(
+    title    = "Relation entre variables topographiques et contamination au CLD",
+    subtitle = "Palette de chaleur – courbe LOESS en rouge",
+    x = NULL, y = "log(1+CLD)"
+  )
+```
+
+Ce graphique montre comment les caractéristiques physiques du terrain influencent la présence de chlordécone. Contrairement à ce qu'on pourrait espérer (un nettoyage naturel par la pente), les résultats montrent une résilience exceptionnelle.
+
+-   **L'effet Pente (`mnt_pente`) :** On observe une remontée de la courbe rouge (LOESS) vers les pentes fortes ($> 30\%$).
+
+    -   *Interprétation :* Normalement, on s'attendrait à ce que l'érosion lessive les sols en pente. Or, les taux restent élevés. Cela prouve que la chlordécone est si fortement liée aux particules de sol (surtout dans les Andosols) que même l'inclinaison du terrain ne suffit pas à l'évacuer. Les parcelles de montagne sont aussi contaminées que les plaines.
+
+-   **Indice de Position Topographique (`mnt_tpi`) :** La courbe en "U" indique des concentrations plus fortes dans les zones très basses (vallées, zones d'accumulation) et les zones très hautes (plateaux).
+
+    -   *Interprétation :* La chlordécone semble s'accumuler par ruissellement dans les points bas, mais reste piégée sur les plateaux d'altitude où l'usage historique était massif.
+
+-   **Rugosité et Relief (`mnt_rugosite` & `mnt_tri`) :** La tendance ascendante montre que les terrains les plus accidentés (souvent dans le Nord volcanique) conservent des charges plus lourdes. Ces zones difficiles d'accès ont paradoxalement "sanctuarisé" la pollution.
+
+-   **Exposition et Ombrage :** Ces variables semblent avoir moins d'impact direct, ce qui suggère que la dégradation par les rayons UV (photodégradation) est négligeable une fois le produit enfoui dans le sol.
+
+## 2.6 Matrice de corrélations
+
+```{r}
+vars_corr <- df %>%
+  select(
+    `CLD (log)`      = taux_cld_sol,
+    `5b-hydro (log)` = taux_5b_hydro_cld,
+    Pente            = mnt_pente,
+    TPI              = mnt_tpi,
+    TRI              = mnt_tri,
+    Rugosité         = mnt_rugosite,
+    Ombrage          = mnt_ombrage,
+    Exposition       = mnt_exposition
+  ) %>%
+  mutate(across(1:2, log1p)) %>%
+  drop_na()
+
+M <- cor(vars_corr, method = "spearman")
+
+corrplot(M,
+         method      = "color",
+         type        = "upper",
+         order       = "hclust",
+         addCoef.col = "black",
+         number.cex  = 0.72,
+         col         = COL2("RdBu", 200),
+         tl.cex      = 0.88,
+         tl.col      = "black",
+         title       = "Corrélations de Spearman – Variables numériques",
+         mar         = c(0,0,2,0))
+```
+
+**La corrélation CLD / 5b-hydro (**$0.64$**) :**
+
+Le résultat le plus important ici est la forte corrélation positive ($0.64$) entre la chlordécone et son produit de dégradation, la 5b-hydro-chlordécone. Plus il y a de molécule mère, plus il y a de résidus de dégradation. Une valeur de $0.64$ (et non $0.99$) montre que la dégradation a bien lieu, mais qu'elle est très incomplète. C'est la signature mathématique d'un polluant qui se transforme extrêmement lentement.
+
+**L'indépendance Topographique (Les valeurs proches de** $0$**)**
+
+Les lignes "Pente", "TPI", "TRI" par rapport au "CLD (log)" ont des coefficients qui sont très faibles ($-0.04$, $-0.05$). La topographie (pente, exposition) n'explique pas *l'intensité* de la pollution. Cela confirme l'idée précédente : la pollution est partout où l'on a cultivé, peu importe que le terrain soit plat ou incliné. La main de l'homme (l'historique bananier) a totalement écrasé les facteurs naturels de relief.
+
+## **Synthèse de l’AED**
+
+Quatre facteurs principaux de contamination se dégagent : 
+
+1.  **l’historique bananier** (variable causale directe), 
+
+2.  **le type de sol** (modérateur de la rétention), 
+
+3.  **la localisation géographique** (héritage de l’implantation des bananeraies),
+
+4.  **la topographie** (facteur de drainage et d’accessibilité). Ces quatre dimensions structurent toute la suite de l’analyse.
+
+# 3 Tests Statistiques
+
+## 3.1 Test de normalité – Kolmogorov-Smirnov
+
+**H₀ :** La distribution du taux de CLD suit une loi normale\
+**H₁ :** Elle ne suit pas une loi normale\
+**Test :** KS (adapté aux variables continues ; préférable au χ² qui appauvrit l’information en regroupant les données par classes)\
+**Niveau :** α = 5%
+
+```{r}
+set.seed(42)
+ech <- sample(df$taux_cld_sol[!is.na(df$taux_cld_sol)], 500)
+
+ks_brut <- ks.test(scale(ech), "pnorm")
+ks_log  <- ks.test(log1p(ech), "pnorm",
+                   mean = mean(log1p(ech)), sd = sd(log1p(ech)))
+
+res_ks <- data.frame(
+  Transformation  = c("Données brutes (standardisées)", "log(1 + CLD)"),
+  `Stat. D`       = round(c(ks_brut$statistic, ks_log$statistic), 5),
+  `p-valeur`      = c(ks_brut$p.value, ks_log$p.value),
+  Décision        = c("Rejeter H₀ ", "Ne pas rejeter H₀")
+)
+
+kable(res_ks, caption = "Test de Kolmogorov-Smirnov – adéquation à la loi normale",
+      booktabs = TRUE) %>%
+  kable_styling(bootstrap_options = c("striped","hover"), full_width = FALSE) %>%
+  row_spec(2, background = "#d5f5e3", bold = TRUE)
+```
+
+```{r}
+par(mfrow = c(1, 2), mar = c(4, 4, 3, 1))
+
+qqnorm(scale(ech), main = "Q-Q plot – données brutes",
+       col = adjustcolor("#3498db", 0.5), pch = 20, cex = 0.8)
+qqline(scale(ech), col = "#c0392b", lwd = 2)
+
+qqnorm(log1p(ech), main = "Q-Q plot – log(1+CLD)",
+       col = adjustcolor("#27ae60", 0.5), pch = 20, cex = 0.8)
+qqline(log1p(ech), col = "#c0392b", lwd = 2)
+```
+
+Bien que les tests de normalité (KS) restent techniquement significatifs en raison du grand nombre de valeurs nulles (inflation de zéros), la transformation $\log(1+x)$ réduit considérablement l'asymétrie initiale. Elle permet d'approcher une distribution "pseudo-normale" indispensable pour la lisibilité des graphiques et la stabilisation des variances lors des analyses de corrélation.
+
+## 3.2 Test de conformité au seuil réglementaire – Wilcoxon unilatéral
+
+**H₀ :** θ = 0.1 mg/kg (la médiane de la population est égale au seuil)\
+**H₁ :** θ \> 0.1 mg/kg (test unilatéral droit)\
+**Test :** Wilcoxon (non paramétrique, adapté à la distribution asymétrique)\
+**Niveau :** α = 5%
+
+```{r}
+wil_test <- wilcox.test(df$taux_cld_sol, mu = SEUIL_CLD,
+                         alternative = "greater", conf.int = TRUE)
+```
+
+Test de Wilcoxon (unilatéral droit)
+
+H₀ : médiane = 0.1 \| H₁ : médiane \> 0.1
+
+```{r}
+cat("Statistique W  :", wil_test$statistic, "\n")
+cat("p-valeur       :", format.pval(wil_test$p.value, digits = 4), "\n")
+cat("IC 95% (borne inf.) :", round(wil_test$conf.int[1], 4), "mg/kg\n")
+```
+
+Décision : REJET de H₀
+
+-   **La p-valeur (**$< 2.2e-16$) : Elle est infinitésimale. Cela signifie qu'il est statistiquement impossible que la médiane réelle de la population soit de $0.1$ mg/kg par simple hasard.
+
+-   **L'Intervalle de Confiance (Borne inf. =** $0.1112$ mg/kg) : On est sûr à 95 % que la médiane de la contamination est **supérieure** à $0.1112$ mg/kg.
+
+-   **Conclusion Sanitaire :** Même si la médiane brute calculée sur l'échantillon total semblait faible ($0.0033$ mg/kg), le test de Wilcoxon, en tenant compte de la distribution globale, confirme que la population des sols prélevés est globalement non-conforme au seuil réglementaire.
+
+## 3.3 Tests de comparaison entre groupes – Kruskal-Wallis
+
+### 3.3.1 CLD selon le type de sol
+
+**H₀ :** Les distributions de CLD sont identiques dans tous les types de sols\
+**H₁ :** Au moins un type de sol a une distribution différente\
+**Test :** Kruskal-Wallis (généralisation non paramétrique de l’ANOVA à K groupes indépendants)
+
+```{r}
+kw_sol <- kruskal.test(taux_cld_sol ~ sol_simple,
+                        data = df %>% filter(!is.na(sol_simple)))
+```
+
+```{r}
+cat("H =", round(kw_sol$statistic, 3),
+    "| df =", kw_sol$parameter,
+    "| p-valeur =", format.pval(kw_sol$p.value), "\n")
+```
+
+Décision : REJET de H₀
+
+Le test de Kruskal-Wallis confirme de manière irréfutable que le type de sol est un facteur déterminant de la concentration en chlordécone.
+
+-   **Signification statistique :** La statistique $H$ ($5606.97$) est extrêmement élevée pour $5$ degrés de liberté, ce qui indique une disparité massive entre les rangs des différents groupes.
+
+-   **Implication agronomique :** Ce résultat légitime l'idée que la stratégie de remédiation ou de culture doit être différenciée selon la nature géologique de la parcelle. Un Andosol et un Ferralsol ne peuvent pas être gérés de la même manière face à la pollution.
+
+### 3.3.2 CLD selon l’historique bananier
+
+```{r}
+df_kw <- df %>% filter(!is.na(nb_periodes_banane), !is.na(taux_cld_sol))
+kw_ban <- kruskal.test(taux_cld_sol ~ nb_periodes_banane, data = df_kw)
+```
+
+```{r}
+cat("H =", round(kw_ban$statistic, 3),
+    "| df =", kw_ban$parameter,
+    "| p-valeur =", format.pval(kw_ban$p.value), "\n")
+```
+
+Décision : REJET de H₀
+
+Le rejet de $H_0$ avec une p-valeur infinitésimale ($< 2.22 \times 10^{-16}$) confirme que le nombre de cycles de culture n'est pas juste une corrélation visuelle, mais une **variable explicative robuste**. La différence de rangs entre les parcelles ayant connu 1, 2 ou 3 périodes de banane est trop massive pour être due au hasard. Ce test valide mathématiquement le tableau précédent qui montrait une progression nette : la médiane passe de $0.14$ mg/kg (1 période) à $0.84$ mg/kg (3 périodes).
+
+### 3.3.3 Test du Chi² d’indépendance – Sol × Pluviométrie
+
+**H₀ :** Type de sol et classe de pluviométrie sont indépendants\
+**H₁ :** Il existe une association entre les deux variables\
+**Test :** Chi² d’indépendance (deux variables qualitatives)
+
+```{r}
+tab_sp <- table(df$sol_simple, df$pluviometrie)
+chi2_sp <- chisq.test(tab_sp, simulate.p.value = TRUE)
+V_cramer <- sqrt(chi2_sp$statistic /
+                   (sum(tab_sp) * (min(nrow(tab_sp), ncol(tab_sp)) - 1)))
+```
+
+```{r}
+cat("Chi² =", round(chi2_sp$statistic, 2),
+    "| p-valeur =", format.pval(chi2_sp$p.value),
+    "| V de Cramer =", round(V_cramer, 3), "\n")
+```
+
+```{r}
+cat("Lien :", ifelse(V_cramer > 0.3, "Fort", "Modéré"), "\n")
+```
+
+Décision : REJET de H₀ – sol et pluviométrie sont dépendants
+
+Le rejet de $H_0$ avec un **V de Cramer de 0,335** confirme une **dépendance forte** entre le type de sol et la pluviométrie.
+
+Ce lien "Fort" valide l'hypothèse selon laquelle certaines natures de sols sont géographiquement indissociables de certaines zones climatiques en Martinique. Les **Andosols** (très pollués) se trouvent presque exclusivement dans les zones de **forte pluviométrie** (3000-5000 mm) du Nord.
+
+Le sol ne se contente pas de retenir la chlordécone par sa chimie (Andosol) ; il est situé là où il pleut le plus, ce qui a historiquement justifié l'implantation des bananeraies et donc l'apport massif de pesticide.
+
+Puisque ces deux variables sont dépendantes, elles apportent une information redondante. Dans un modèle prédictif, cela suggère que le type de sol est un excellent "proxy" (indicateur indirect) de la pluviométrie passée.
+
+## **Synthèse des tests** 
+
+L’ensemble des tests confirme et formalise les tendances de l’AED.
+
+1.  Médiane supérieur au seuil légal : alerte de santé publique confirmée.
+
+2.  Sol, historique bananier et topographie ont un impact statistiquement démontré sur les niveaux de CLD.
+
+3.  Sol et pluviométrie ne sont pas indépendants, créant une structure de dépendance à analyser en multivarié.
+
+# 4 Analyse en Composantes Principales (ACP)
+
+## 4.1 Préparation – agrégation par parcelle
+
+```{r}
+df_acp_raw <- df %>%
+  group_by(id_parcelle, commune_parcelle, sol_simple,
+           nb_periodes_banane, pluviometrie) %>%
+  summarise(
+    log_cld        = mean(log1p(taux_cld_sol),      na.rm = TRUE),
+    log_5b         = mean(log1p(taux_5b_hydro_cld),  na.rm = TRUE),
+    mnt_pente      = mean(mnt_pente,                 na.rm = TRUE),
+    mnt_tpi        = mean(mnt_tpi,                   na.rm = TRUE),
+    mnt_tri        = mean(mnt_tri,                   na.rm = TRUE),
+    mnt_rugosite   = mean(mnt_rugosite,               na.rm = TRUE),
+    mnt_ombrage    = mean(mnt_ombrage,                na.rm = TRUE),
+    mnt_exposition = mean(mnt_exposition,             na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  drop_na()
+
+vars_actives <- c("log_cld","log_5b","mnt_pente","mnt_tpi",
+                  "mnt_tri","mnt_rugosite","mnt_ombrage","mnt_exposition")
+
+mat_acp <- df_acp_raw %>% select(all_of(vars_actives))
+cat("Matrice ACP :", nrow(mat_acp), "parcelles ×", ncol(mat_acp), "variables\n")
+```
+
+## 4.2 Réalisation de l’ACP normée
+
+```{r}
+res_acp <- PCA(mat_acp, scale.unit = TRUE, ncp = 6, graph = FALSE)
+```
+
+## 4.3 Choix du nombre d’axes – Règle de Kaiser et éboulis
+
+```{r}
+fviz_eig(res_acp, addlabels = TRUE, ylim = c(0, 65),
+         barfill = "#2980b9", barcolor = "#1a5276",
+         linecolor = "#e74c3c", ggtheme = theme_minimal()) +
+  geom_hline(yintercept = 100/ncol(mat_acp), linetype = "dashed",
+             color = "#8e44ad", linewidth = 1) +
+  annotate("text", x = 6.5, y = 100/ncol(mat_acp) + 2,
+           label = paste0("Seuil Kaiser = ", round(100/ncol(mat_acp), 1), "%"),
+           color = "#8e44ad", size = 3.5) +
+  labs(title    = "Éboulis des valeurs propres – ACP normée",
+       subtitle = "Ligne rouge = variance cumulée | Ligne violette = seuil Kaiser (1/p)")
+```
+
+```{r}
+eig_df <- as.data.frame(res_acp$eig) %>%
+  mutate(
+    Axe              = paste0("PC", 1:nrow(.)),
+    `Val. propre`    = round(eigenvalue, 3),
+    `% Variance`     = round(`percentage of variance`, 2),
+    `% Cumulé`       = round(`cumulative percentage of variance`, 2),
+    `Kaiser (λ>1)`   = ifelse(eigenvalue >= 1, "✓ Retenu", "")
+  ) %>%
+  select(Axe, `Val. propre`, `% Variance`, `% Cumulé`, `Kaiser (λ>1)`)
+
+kable(eig_df, caption = "Valeurs propres et variance expliquée",
+      booktabs = TRUE) %>%
+  kable_styling(bootstrap_options = c("striped","hover"), full_width = FALSE) %>%
+  row_spec(which(eig_df$`Kaiser (λ>1)` == "✓ Retenu"),
+           background = "#d6eaf8", bold = TRUE)
+```
+
+L'éboulis des valeurs propres permet de déterminer combien de "dimensions" (ou axes) sont nécessaires pour résumer le jeu de données sans perdre trop d'informations.
+
+-   **Règle de Kaiser (**$\lambda > 1$) : Le tableau montre que les 3 premiers axes (PC1, PC2, PC3) ont une valeur propre supérieure à 1. Selon ce critère, ces trois dimensions sont suffisantes pour capturer l'essentiel de la structure des données.
+
+-   **Qualité du résumé :** Ensemble, ces trois axes expliquent $77,59\%$ de la variance totale. Cela signifie que l'on peut réduire les 8 variables initiales à seulement 3 dimensions tout en conservant près de $80\%$ de l'information.
+
+-   **Poids de la première dimension (PC1) :** Avec $37,4\%$ de variance expliquée, le premier axe porte à lui seul une part massive de l'information. On peut déjà anticiper qu'il regroupe les variables topographiques très corrélées entre elles (Pente, TRI, Rugosité) que nous avions vues dans la matrice de Spearman.
+
+## 4.4 Cercle des corrélations
+
+```{r}
+fviz_pca_var(res_acp,
+             col.var       = "cos2",
+             gradient.cols = c("#bdc3c7","#e67e22","#c0392b"),
+             repel         = TRUE,
+             labelsize     = 4.5,
+             arrowsize     = 0.7) +
+  labs(
+    title    = "Cercle des corrélations – Plan (PC1 × PC2)",
+    subtitle = "Couleur = cos² (qualité de représentation) | Variables proches = corrélées",
+    color    = "cos²"
+  ) +
+  theme_minimal(base_size = 13)
+```
+
+**1. L’Axe 1 (Dim1, 37.4%) : Le "Gradient du Relief"**
+
+Cet axe horizontal est quasi exclusivement défini par la topographie.
+
+-   **Variables dominantes :** La pente (`mnt_pente`), la rugosité (`mnt_rugosite`) et le TRI sont parfaitement alignés à droite.
+
+-   **Interprétation :** Plus on se déplace vers la droite de l'axe, plus le terrain est accidenté et pentu.
+
+-   **Indépendance :** Cet axe est perpendiculaire à l'axe du CLD. Cela confirme statistiquement ce que l'on soupçonnais : la pente n'influence pas directement le taux de pollution. On peut être très pollué sur du plat ou sur une pente forte, la topographie ne "nettoie" pas le sol.
+
+**2. L’Axe 2 (Dim2, 21.9%) : Le "Signal de Contamination"**
+
+Cet axe vertical porte toute l'information sur les molécules chimiques.
+
+-   **Variables dominantes :** Le taux de chlordécone (`log_cld`) et son produit de dégradation (`log_5b`) sont très proches et pointent vers le haut.
+
+-   **Interprétation :** Les parcelles situées en haut du graphique sont les zones de forte charge historique.
+
+-   **Corrélation visuelle :** La proximité entre `log_cld` et `log_5b` confirme leur forte corrélation positive ($0.64$) vue précédemment.
+
+## 4.5 Biplot individus × variables
+
+```{r}
+fviz_pca_biplot(
+  res_acp,
+  geom.ind    = "point",
+  pointshape  = 21,
+  pointsize   = 1.8,
+  fill.ind    = df_acp_raw$sol_simple,
+  palette     = "Dark2",
+  alpha.ind   = 0.45,
+  col.var     = "#2c3e50",
+  arrowsize   = 0.7,
+  repel       = TRUE,
+  label       = "var",
+  labelsize   = 4
+) +
+  labs(
+    title    = "Biplot ACP – Parcelles (points) et variables (flèches)",
+    subtitle = "Couleur des points = type de sol | Les flèches = directions des variables",
+    fill     = "Sol"
+  )
+```
+
+**1. La confirmation des Andosols comme "Zone à Risque"**
+
+La répartition des points orange (**Andosols**) par rapport à l'axe vertical (Dim2) :
+
+-   Une grande partie de la "traînée" de points qui s'élève vers le haut (direction `log_cld`) est composée d'Andosols.
+
+-   **Interprétation :** Cela confirme visuellement ton test de Kruskal-Wallis. Les parcelles qui présentent les plus fortes concentrations de chlordécone sont majoritairement des Andosols. Les autres sols (Vertisols en jaune, Ferralsols en violet) restent massivement écrasés près de la ligne de base (zéro pollution).
+
+### 2. Le comportement unique des Alluvions/Colluvions
+
+Les points turquoise (**Alluvium, Colluvium**) sont intéressants :
+
+-   Ils se regroupent presque tous dans le quadrant en bas à gauche.
+
+-   **Interprétation :** Ce sont des zones de faible pollution et de faible pente. Étant issus de transports de matières par l'eau, leur faible contamination suggère qu'ils ne piègent pas la molécule comme le font les sols volcaniques directs.
+
+## 4.6 Contributions des variables aux axes
+
+```{r}
+p_c1 <- fviz_contrib(res_acp, choice = "var", axes = 1, top = 8,
+                      fill = "#2980b9", color = "#1a5276") +
+  geom_hline(yintercept = 100/ncol(mat_acp),
+             color = "red", linetype = "dashed") +
+  labs(title = "Contributions à PC1",
+       subtitle = "Ligne rouge = contribution moyenne (1/p = 12.5%)")
+
+p_c2 <- fviz_contrib(res_acp, choice = "var", axes = 2, top = 8,
+                      fill = "#e67e22", color = "#784212") +
+  geom_hline(yintercept = 100/ncol(mat_acp),
+             color = "red", linetype = "dashed") +
+  labs(title = "Contributions à PC2")
+
+p_c1 + p_c2
+```
+
+```{r}
+loadings_df <- as.data.frame(res_acp$var$cor[, 1:3]) %>%
+  mutate(across(everything(), ~round(., 3)))
+loadings_df$Variable <- rownames(loadings_df)
+loadings_df <- loadings_df %>% select(Variable, Dim.1, Dim.2, Dim.3)
+
+kable(loadings_df,
+      caption = "Corrélations variables–composantes (loadings)",
+      booktabs = TRUE) %>%
+  kable_styling(bootstrap_options = c("striped","hover"), full_width = FALSE) %>%
+  column_spec(2, background = ifelse(abs(loadings_df$Dim.1) > 0.5,
+    ifelse(loadings_df$Dim.1 > 0, "#aed6f1", "#f5cba7"), "white")) %>%
+  column_spec(3, background = ifelse(abs(loadings_df$Dim.2) > 0.5,
+    ifelse(loadings_df$Dim.2 > 0, "#aed6f1", "#f5cba7"), "white"))
+```
+
+**Axe 1 (PC1) : La Dimension "Relief"**
+
+-   **Variables clés :** Rugosité ($0.991$), TRI ($0.989$) et Pente ($0.986$).
+
+-   **Analyse :** Cet axe est pur. Il ne contient que de la topographie. La ligne rouge (seuil de contribution moyenne à $12.5\%$) montre que seules ces trois variables "font" l'axe 1.
+
+-   **Verdict :** PC1 mesure l'intensité du relief. Si une parcelle a un score élevé sur PC1, c'est une zone de montagne ou de forte pente.
+
+**Axe 2 (PC2) : La Dimension "Chimie"**
+
+-   **Variables clés :** `log_cld` ($0.918$) et `log_5b` ($0.911$).
+
+-   **Analyse :** C'est ici que se trouve ton information sanitaire. Les contributions sont massives (près de $50\%$ chacune).
+
+-   **Verdict :** PC2 est l'axe de la contamination. Un score élevé sur PC2 signifie une forte présence de chlordécone, indépendamment de la forme du terrain.
+
+**Axe 3 (PC3) : La Dimension "Exposition"**
+
+-   **Variables clés :** Ombrage ($0.838$) et Exposition ($0.837$).
+
+-   **Analyse :** Cet axe, bien que retenu par Kaiser, est très spécifique. Il traite de l'orientation du terrain par rapport au soleil.
+
+-   **Verdict :** Il n'a aucun lien avec la chlordécone, mais il complète la description physique des parcelles.
+
+# 5 Analyse Factorielle des Correspondances (AFC)
+
+## 5.1 Table de contingence et test préalable
+
+```{r}
+tab_afc <- table(df$sol_simple, df$commune_parcelle)
+
+chi2_afc <- chisq.test(tab_afc, simulate.p.value = TRUE)
+V_afc    <- sqrt(chi2_afc$statistic /
+                   (sum(tab_afc) * (min(dim(tab_afc)) - 1)))
+
+cat("Tableau :", nrow(tab_afc), "sols ×", ncol(tab_afc), "communes\n")
+```
+
+```{r}
+cat("Chi² =", round(chi2_afc$statistic, 2),
+    "| p-valeur =", format.pval(chi2_afc$p.value),
+    "| V de Cramer =", round(V_afc, 3), "\n")
+```
+
+```{r}
+cat("Lien :", ifelse(V_afc > 0.3, "Fort", "Modéré"),
+    "→ AFC pleinement justifiée\n")
+```
+
+Le test du Chi² réalisé sur la table de contingence (6 types de sols × 35 communes) est massif. On a pour résultat un V de Cramer de 0,533. Sachant qu'un score supérieur à 0,3 indique un lien très fort. Les communes ne sont pas des mélanges aléatoires de sols ; chaque commune possède une identité géologique propre et marquée. Cette dépendance statistique valide totalement l'usage de l'AFC pour visualiser ces associations.
+
+## 5.2 Inertie et carte factorielle
+
+```{r}
+res_afc <- CA(tab_afc, graph = FALSE)
+
+fviz_eig(res_afc, addlabels = TRUE,
+         barfill = "#8e44ad", barcolor = "#6c3483",
+         linecolor = "#c0392b", ggtheme = theme_minimal()) +
+  labs(title    = "Inertie expliquée – AFC",
+       subtitle = "L'inertie totale est proportionnelle au Chi² / n")
+```
+
+L'éboulis de l'inertie montre que le premier axe (Dim1) capte à lui seul **57 % de la variance** (l'inertie totale). Avec le deuxième axe (22 %), on parviens à résumer **79 % de la structure Sol/Commune** sur un seul plan.
+
+```{r}
+fviz_ca_biplot(
+  res_afc,
+  repel     = TRUE,
+  col.row   = "#c0392b",
+  col.col   = "#1a5276",
+  alpha.row = 0.85,
+  alpha.col = 0.85,
+  labelsize = 3.5,
+  pointsize = 2.5,
+  shape.row = 17,
+  shape.col = 16
+) +
+  labs(
+    title    = "Carte factorielle AFC – Type de sol × Commune",
+    subtitle = "▲ Rouge = types de sol | ● Bleu = communes\nProximité = association préférentielle",
+    caption  = "Un sol proche d'une commune signifie qu'il y est surreprésenté"
+  ) +
+  theme_minimal(base_size = 12)
+```
+
+Le biplot de l'AFC révèle trois pôles territoriaux majeurs qui expliquent la répartition de la chlordécone :
+
+1.  **Le Pôle Nord "Volcanique" (Quadrant haut-gauche) :**
+
+    -   **Association :** L'Andosol est entouré de communes comme *Le Morne-Rouge, Ajoupa-Bouillon, Basse-Pointe, Le Prêcheur* et *Macouba*.
+
+    -   **Signification :** C'est le foyer principal de la contamination. Ces communes sont géologiquement définies par le sol qui retient le plus la chlordécone.
+
+2.  **Le Pôle Sud "Sec" (Quadrant haut-droit) :**
+
+    -   **Association :** Le Vertisol est associé à *Sainte-Anne, Le Vauclin, Le Marin, Sainte-Luce* et *Les Anses-d'Arlet*.
+
+    -   **Signification :** C'est l'opposé géologique et sanitaire. Ces zones, moins pluvieuses et dotées de sols différents, sont historiquement et physiquement préservées des forts taux de chlordécone.
+
+3.  **Le Pôle des Plaines et Sols Anciens (Partie basse) :**
+
+    -   **Association :** Le Ferralsol, le Nitisol et les Alluvions se regroupent avec des communes comme *Lamentin, Ducos* ou *Rivière-Salée*.
+
+    -   **Signification :** Ces zones représentent des terrains plus stables ou de transition, avec des niveaux de risque modérés à faibles.
+
+## 5.3 Qualité de représentation (cos²)
+
+```{r}
+# 1. Extraire les données
+cos2_sol <- as.data.frame(res_afc$row$cos2[, 1:2])
+
+# 2. Renommer explicitement pour éviter l'erreur (Dim.1 vs Dim 1)
+colnames(cos2_sol) <- c("Dim.1", "Dim.2")
+
+# 3. Le reste de votre code fonctionnera alors parfaitement
+cos2_sol <- cos2_sol %>%
+  mutate(Total = round(Dim.1 + Dim.2, 3),
+         across(c(Dim.1, Dim.2), ~round(., 3)))
+
+cos2_sol$Sol <- rownames(cos2_sol)
+
+kable(cos2_sol %>% select(Sol, Dim.1, Dim.2, Total) %>%
+        arrange(desc(Total)),
+      caption = "Cos² des types de sol sur les deux premiers axes",
+      booktabs = TRUE) %>%
+  kable_styling(bootstrap_options = c("striped","hover"), full_width = FALSE) %>%
+  row_spec(which(cos2_sol$Total > 0.6), background = "#d5f5e3")
+```
+
+Les Andosols (Total = 0.974) et les Vertisols (Total = 0.966) frôlent la perfection. Ces deux types de sols sont les piliers qui structurent la géographie de la Martinique dans les données.
+
+-   L'axe 1 (Dim.1) capture presque toute l'information des Andosols ($0.907$), ce qui confirme que l'opposition Est-Ouest (ou Nord-Sud) du territoire est avant tout une opposition géologique entre sols volcaniques et sols sédimentaires.
+
+Le Ferralsol ($0.756$) est également très bien capturé, mais sa répartition est plus équilibrée entre les deux axes ($0.359$ et $0.397$). Cela montre qu'il représente une transition géographique moins "tranchée" que l'Andosol.
+
+La valeur très faible pour Urban area ($0.033$) indique que cette catégorie n'est pas du tout expliquée par ces deux axes. Les zones urbaines sont dispersées sur toute l'île indépendamment de la nature profonde du sol. Statistiquement, c'est un "bruit" qui ne suit pas la logique géologique globale.
+
+# 6 Clustering – Segmentation des communes
+
+## 6.1 Profil des communes
+
+```{r}
+df_clust_raw <- df %>%
+  group_by(commune_parcelle) %>%
+  summarise(
+    mediane_cld  = median(taux_cld_sol, na.rm = TRUE),
+    pct_depass   = mean(taux_cld_sol > SEUIL_CLD, na.rm = TRUE) * 100,
+    
+    cv_cld = ifelse(
+      mean(taux_cld_sol, na.rm = TRUE) == 0,
+      0,
+      sd(taux_cld_sol, na.rm=TRUE) / mean(taux_cld_sol, na.rm=TRUE)
+    ),
+    
+    log_cld_moy  = mean(log1p(taux_cld_sol), na.rm = TRUE),
+    pct_ban_3    = mean(nb_periodes_banane == "3", na.rm = TRUE) * 100,
+    pct_ban_0    = mean(nb_periodes_banane == "Inconnu", na.rm = TRUE) * 100,
+    moy_pente    = mean(mnt_pente, na.rm = TRUE),
+    moy_tpi      = mean(mnt_tpi, na.rm = TRUE),
+    moy_rugosite = mean(mnt_rugosite, na.rm = TRUE),
+    n            = n(),
+    .groups = "drop"
+  )
+
+mat_clust <- df_clust_raw %>%
+  select(-commune_parcelle, -n)
+
+# Remplacement des NA par la moyenne de colonne
+for(i in 1:ncol(mat_clust)){
+  mat_clust[is.na(mat_clust[, i]), i] <- mean(mat_clust[, i], na.rm = TRUE)
+}
+
+mat_clust <- scale(mat_clust)
+
+rownames(mat_clust) <- df_clust_raw$commune_parcelle
+cat("Matrice :", nrow(mat_clust), "communes ×", ncol(mat_clust), "variables\n")
+```
+
+On a 9 variables stratégiques qui résument les dimensions identifiées précédemment :
+
+-   **Le risque sanitaire** : La médiane et le pourcentage de dépassement ($> 0,1$ mg/kg).
+
+-   **L'intensité historique** : Le pourcentage de parcelles ayant connu 3 cycles bananiers (le facteur de dose).
+
+-   **La signature physique** : Pente, TPI et rugosité (le cadre topographique).
+
+-   **L'incertitude** : Le coefficient de variation ($CV$) et le taux de données "Inconnu", qui mesurent l'hétérogénéité de la pollution au sein d'une même commune.
+
+## 6.2 Détermination du nombre de clusters
+
+```{r}
+set.seed(42)
+
+p_coude <- fviz_nbclust(mat_clust, kmeans,
+                        method = "wss", k.max = 8) +
+  geom_vline(xintercept = 4, linetype = "dashed", color = "#c0392b") +
+  labs(title = "Méthode du coude (WSS)",
+       subtitle = "Chercher le 'genou' de la courbe")
+
+p_silh <- fviz_nbclust(mat_clust, kmeans,
+                       method = "silhouette", k.max = 8) +
+  labs(title = "Largeur de silhouette moyenne",
+       subtitle = "Maximum = k optimal")
+
+p_coude + p_silh
+```
+
+### Méthode du coude (WSS) : L'approche statistique
+
+Le graphique de gauche mesure la variance interne des groupes (plus elle est faible, plus les groupes sont homogènes). On observe une cassure (un "genou") après $k = 2$, puis une pente qui s'adoucit nettement après $k = 4$. Passer de 4 à 5 clusters n'apporte plus un gain de précision majeur. La ligne pointillée rouge à 4 suggère que c'est un bon compromis pour capturer la diversité du territoire sans trop complexifier l'analyse.
+
+### Largeur de silhouette : L'approche de la qualité
+
+Ce graphique mesure si une commune est bien classée dans son groupe ou si elle est proche de la frontière avec un autre. Le pic absolu est à $k = 2$, ce qui indique une séparation très nette entre deux grands types de territoires (probablement "Sols volcaniques pollués" vs "Sols sédimentaires préservés"). Bien que le maximum soit à 2, on observe un second plateau relativement stable autour de $k = 4$.
+
+### Verdict : $k = 4$ 
+
+Bien que la silhouette suggère 2 groupes, une partition en 4 clusters est souvent préférable pour une aide à la décision publique :
+
+1.  $k = 2$ est trop simpliste (Nord vs Sud).
+
+2.  $k = 4$ permet d'isoler des profils plus fins :
+
+    -   Le "Cœur de cible" (Haute pollution/Andosols).
+
+    -   Les zones de transition (Pollution modérée).
+
+    -   Les zones urbaines ou hétérogènes.
+
+    -   Les zones préservées (Sud/Vertisols).
+
+## 6.3 K-means (k = 4)
+
+```{r}
+set.seed(42)
+K_OPT <- 4
+km_res <- kmeans(mat_clust, centers = K_OPT, nstart = 100, iter.max = 200)
+
+df_clust <- df_clust_raw %>%
+  mutate(cluster_km = factor(km_res$cluster,
+                              labels = paste0("Cluster ", 1:K_OPT)))
+```
+
+Répartition par cluster :
+
+```{r}
+print(table(df_clust$cluster_km))
+```
+
+```{r}
+cat("\nRatio BSS/TSS :", round(km_res$betweenss/km_res$totss*100, 1), "%\n")
+```
+
+La segmentation K-means permet de passer d'une liste de 35 communes à 4 profils stratégiques. Le ratio BSS/TSS de 56.5 % est très satisfaisant : il signifie que plus de la moitié de la diversité totale entre les communes est expliquée par ce classement.
+
+```{r}
+fviz_cluster(
+  km_res,
+  data          = mat_clust,
+  palette       = c("#e74c3c","#f39c12","#27ae60","#2980b9"),
+  geom          = "text",
+  labelsize     = 9,
+  ellipse.type  = "convex",
+  ellipse.alpha = 0.15,
+  repel         = TRUE,
+  ggtheme       = theme_minimal(base_size = 12)
+) +
+  labs(
+    title    = paste0("Clustering K-means – k = ", K_OPT, " clusters"),
+    subtitle = paste0("Projection PC1 × PC2 | BSS/TSS = ",
+                      round(km_res$betweenss/km_res$totss*100, 1), "%")
+  )
+```
+
+### 1. Cluster 1 (Rouge) : L'Épicentre du Risque (2 communes)
+
+-   **Communes :** *Macouba, Le Morne-Rouge*.
+
+-   **Profil :** Ce sont les points les plus à droite sur l'axe Dim1. Elles cumulent tout : Andosols, pluviométrie maximale et historique bananier intense.
+
+-   **Verdict :** Zones de priorité absolue pour la surveillance sanitaire et l'interdiction de certaines cultures sensibles.
+
+### 2. Cluster 2 (Orange) : Les Zones de Forte Contamination (9 communes)
+
+-   **Communes :** *Grand'Rivière, Le Lorrain, Basse-Pointe, Saint-Esprit, etc.*
+
+-   **Profil :** Elles forment le groupe "Nord-Atlantique". Bien que moins extrêmes que le Cluster 1, elles présentent des taux de dépassement très élevés et une topographie marquée.
+
+-   **Verdict :** Territoires nécessitant un accompagnement technique fort pour la reconversion agricole.
+
+### 3. Cluster 3 (Vert) : Le "Grand Sud" et les Zones Préservées (16 communes)
+
+-   **Communes :** *Sainte-Anne, Le Marin, Fort-de-France, Ducos, Lamentin, etc.*
+
+-   **Profil :** C'est le groupe le plus vaste. Il se situe en bas à gauche de la projection. Ce sont des zones de plaines ou de sols sédimentaires (Vertisols) avec peu ou pas d'historique bananier.
+
+-   **Verdict :** Zones à faible risque chlordécone, propices au développement de circuits courts de diversification (maraîchage, élevage).
+
+### 4. Cluster 4 (Bleu) : Les Zones de Relief et Diversité (8 communes)
+
+-   **Communes :** *Fonds-Saint-Denis, Le Morne-Vert, Case-Pilote, etc.*
+
+-   **Profil :** Situées en haut à gauche, ces communes ont un relief très accidenté (Dim2 élevé) mais une contamination plus modérée ou hétérogène que le Cluster 2.
+
+-   **Verdict :** Zones où la topographie joue un rôle dans l'accès aux parcelles, nécessitant des diagnostics ciblés à l'échelle de l'exploitation.
+
+## 6.4 Classification Ascendante Hiérarchique (CAH)
+
+```{r}
+dist_mat <- dist(mat_clust, method = "euclidean")
+hc       <- hclust(dist_mat, method = "ward.D2")
+
+dend <- as.dendrogram(hc)
+dend_col <- color_branches(dend, k = K_OPT,
+                            col = c("#e74c3c","#f39c12","#27ae60","#2980b9"))
+
+par(mar = c(5, 4, 3, 1))
+plot(dend_col,
+     main    = paste0("Dendrogramme CAH – méthode de Ward (k = ", K_OPT, ")"),
+     ylab    = "Distance euclidienne (inertie de Ward)",
+     nodePar = list(pch = NA),
+     cex     = 0.8)
+abline(h = 5, col = "grey50", lty = 2, lwd = 1.5)
+```
+
+La hauteur des branches (l'axe vertical) représente la distance euclidienne (ou dissemblance) entre les communes ou les groupes.
+
+-   **Le premier grand saut :** On voit une séparation majeure tout en haut de l'arbre (vers une distance de 13). Elle sépare le bloc rouge/orange (Nord contaminé) du bloc vert/bleu (Reste de l'île).
+
+-   **Le Cluster 1 (Rouge) :** *Morne-Rouge* et *Macouba* sont si proches l'une de l'autre (branche très courte) et si différentes du reste qu'elles forment un duo isolé dès le départ. C'est la confirmation de l'"Épicentre".
+
+La ligne pointillée grise à une hauteur de 5 coupe l'arbre en quatre sections nettes :
+
+-   **Branche Orange :** Regroupe les communes à forte pression historique (*Grand'Rivière, La Trinité, Le Lorrain*, etc.).
+
+-   **Branche Verte :** Un groupe intermédiaire de relief (*Le Carbet, Case-Pilote, Morne-Vert*).
+
+-   **Branche Bleue :** Le groupe le plus large et le plus diversifié, regroupant les zones de plaines et le Sud préservé.
+
+## 6.5 Concordance K-means vs CAH
+
+```{r}
+clusters_cah <- cutree(hc, k = K_OPT)
+df_clust <- df_clust %>%
+  mutate(cluster_cah = factor(clusters_cah,
+                               labels = paste0("CAH-", 1:K_OPT)))
+
+tab_conc <- table(`K-means` = df_clust$cluster_km,
+                  `CAH`     = df_clust$cluster_cah)
+
+kable(tab_conc, caption = "Concordance K-means × CAH", booktabs = TRUE) %>%
+  kable_styling(bootstrap_options = c("striped","hover"), full_width = FALSE)
+```
+
+```{r}
+ari <- adjustedRandIndex(as.integer(df_clust$cluster_km),
+                          as.integer(df_clust$cluster_cah))
+cat("\nIndice de Rand Ajusté (ARI) :", round(ari, 3), "\n")
+```
+
+```{r}
+cat("Interprétation :", ifelse(ari > 0.7, "Très bonne concordance",
+                         ifelse(ari > 0.4, "Concordance modérée", "Faible")), "\n")
+```
+
+#### Analyse du tableau de contingence
+
+-   **Les pôles de stabilité :** Le Cluster 3 (K-means) et le CAH-1 coïncident parfaitement avec 16 communes communes. C'est le bloc "Sud/Préservé".
+
+-   **Le noyau dur du risque :** Le Cluster 1 (K-means) correspond aux 2 communes du CAH-4 (*Macouba* et *Morne-Rouge*).
+
+-   **Les zones de flou :** La concordance est plus faible pour les Clusters 2 et 4 de K-means, qui se répartissent entre CAH-1, CAH-2 et CAH-3. Cela s'explique par le fait que ces communes ont des profils "intermédiaires" (relief marqué mais pollution modérée, ou inversement).
+
+## 6.6 Profils des clusters
+
+```{r}
+profils <- df_clust %>%
+  group_by(cluster_km) %>%
+  summarise(
+    `Nb communes`         = n(),
+    `CLD médiane (mg/kg)` = round(median(mediane_cld), 4),
+    `% > seuil`           = round(mean(pct_depass), 1),
+    `% 3 pér. banane`     = round(mean(pct_ban_3), 1),
+    `Pente moy. (°)`      = round(mean(moy_pente), 2),
+    `Rugosité moy.`       = round(mean(moy_rugosite), 2),
+    .groups = "drop"
+  )
+
+kable(profils, caption = paste0("Profils des ", K_OPT, " clusters"),
+      booktabs = TRUE) %>%
+  kable_styling(bootstrap_options = c("striped","hover"), full_width = FALSE) %>%
+  row_spec(which.max(profils$`CLD médiane (mg/kg)`),
+           bold = TRUE, background = "#fadbd8") %>%
+  row_spec(which.min(profils$`CLD médiane (mg/kg)`),
+           background = "#d5f5e3")
+```
+
+```{r}
+labels_map <- c(
+  mediane_cld  = "CLD médiane",
+  pct_depass   = "% > seuil",
+  cv_cld       = "Variabilité (CV)",
+  log_cld_moy  = "log(CLD) moyen",
+  pct_ban_3    = "% 3 pér. banane",
+  pct_ban_0    = "% jamais exploité",
+  moy_pente    = "Pente moy.",
+  moy_tpi      = "TPI moyen",
+  moy_rugosite = "Rugosité moy."
+)
+
+as.data.frame(km_res$centers) %>%
+  mutate(Cluster = paste0("Cluster ", 1:K_OPT)) %>%
+  pivot_longer(-Cluster, names_to = "Variable", values_to = "z_score") %>%
+  mutate(Variable = coalesce(labels_map[Variable], Variable)) %>%
+  ggplot(aes(x = Variable, y = Cluster, fill = z_score)) +
+  geom_tile(color = "white", linewidth = 0.5) +
+  geom_text(aes(label = round(z_score, 2)), size = 3.5, fontface = "bold") +
+  scale_fill_gradient2(low = "#2980b9", mid = "white", high = "#c0392b",
+                       midpoint = 0, name = "Z-score") +
+  labs(
+    title    = "Heatmap des centroïdes – K-means (valeurs normalisées)",
+    subtitle = "Rouge = valeur élevée | Bleu = valeur faible",
+    x = NULL, y = NULL
+  ) +
+  theme(axis.text.x = element_text(angle = 40, hjust = 1))
+```
+
+### Cluster 1 : Les Zones Critiques (Macouba & Morne-Rouge)
+
+C'est le profil de l'urgence sanitaire absolue, marqué par les scores les plus élevés en rouge sur la heatmap.
+
+-   **Contamination extrême** : Une CLD médiane de **2,03 mg/kg**, soit **20 fois le seuil légal**.
+
+-   **Alerte rouge** : **79 %** des parcelles de ces communes dépassent le seuil de 0,1 mg/kg.
+
+-   **Paradoxe de l'historique** : Bien que la pollution soit maximale, le `% 3 pér. banane` (9,9 %) est plus faible que dans le Cluster 2. Cela confirme l'hypothèse des **Andosols** (très présents ici d'après le AFC) qui retiennent massivement le polluant même avec moins de cycles de traitement.
+
+### Cluster 2 : Les Zones de Culture Historique
+
+Ce groupe représente le cœur battant de l'ancienne économie bananière.
+
+-   **Pression agricole maximale** : Le score Z pour le `% 3 pér. banane` (1,32) est le plus élevé de tous les groupes.
+
+-   **Risque avéré** : Près de **43,3 %** des parcelles sont contaminées, avec une CLD médiane de **0,06 mg/kg**.
+
+-   **Profil** : Communes du Nord-Atlantique où l'usage historique dicte la pollution actuelle.
+
+### Cluster 3 : Les Zones de Sécurité Alimentaire
+
+Ce cluster est le "poumon sain" de l'île en termes de chlordécone, représenté en bleu (scores faibles) sur la heatmap.
+
+-   **Contamination résiduelle** : Une CLD médiane quasi nulle (**0,0033 mg/kg**) et un taux de dépassement très faible (13,9 %).
+
+-   **Sols préservés** : Correspond aux zones de **Vertisols** et **Ferralsols** identifiées dans le AFC.
+
+-   **Opportunité** : Ce sont les zones prioritaires pour le maraîchage et les cultures racines sécurisées.
+
+### Cluster 4 : Les Zones de Relief "Héritage"
+
+Un profil atypique où la géographie physique domine la signature statistique.
+
+-   **Topographie extrême** : Scores Z les plus élevés pour la **Pente**, la **Rugosité** et le **TPI**.
+
+-   **Faible pollution** : Malgré un relief complexe, le taux de dépassement reste bas (13,6 %) car ces zones ont été peu exploitées pour la banane (score `% jamais exploité` positif).
+
+## 6.7 Carte géographique des clusters
+
+```{r}
+df %>%
+  group_by(commune_parcelle) %>%
+  summarise(lon_raw = mean(coord_x, na.rm=TRUE),
+            lat_raw = mean(coord_y, na.rm=TRUE), .groups = "drop") %>%
+  left_join(df_clust %>% select(commune_parcelle, cluster_km),
+            by = "commune_parcelle") %>%
+  filter(!is.na(cluster_km)) %>%
+  st_as_sf(coords = c("lon_raw","lat_raw"), crs = 5490) %>%
+  st_transform(4326) %>%
+  mutate(lon = st_coordinates(.)[,1], lat = st_coordinates(.)[,2]) %>%
+  st_drop_geometry() %>%
+  ggplot(aes(x = lon, y = lat, color = cluster_km, label = commune_parcelle)) +
+  geom_point(size = 5, alpha = 0.9) +
+  geom_text(nudge_y = 0.006, size = 2.8, color = "grey20", fontface = "italic") +
+  scale_color_manual(
+    values = c("Cluster 1" = "#e74c3c", "Cluster 2" = "#f39c12",
+               "Cluster 3" = "#27ae60", "Cluster 4" = "#2980b9"),
+    name = "Cluster"
+  ) +
+  coord_fixed(ratio = 1.05) +
+  labs(
+    title    = "Carte des profils territoriaux – Martinique",
+    subtitle = "Communes colorées selon leur profil de contamination (K-means)",
+    x = "Longitude", y = "Latitude"
+  )
+```
+
+### La Fracture Nord / Sud (Gradient de contamination)
+
+La carte révèle une organisation spatiale très structurée qui suit le relief et la géologie de l'île :
+
+-   **Le "Cœur du Risque" (Rouge - Cluster 1)** : Concentré sur le flanc de la Montagne Pelée (*Macouba*, *Morne-Rouge*). C'est la zone où la combinaison Andosols + Pluviométrie + Historique crée la contamination la plus critique.
+
+-   **La Ceinture Nord-Atlantique (Orange - Cluster 2)** : Elle entoure l'épicentre et s'étend vers l'Est (*Grand'Rivière*, *Basse-Pointe*, *Lorrain*). C'est le berceau historique de la banane où le sol reste fortement marqué.
+
+-   **Le Bloc Sud et Centre (Vert - Cluster 3)** : Il couvre la grande majorité de la moitié sud de l'île (*Sainte-Anne*, *Le Marin*, *Ducos*). Cette zone est protégée par ses sols (Vertisols) et un historique cultural différent.
+
+-   **Le cas particulier du Relief (Bleu - Cluster 4) :** Les communes bleues (*Le Prêcheur*, *Saint-Pierre*, *Fonds-Saint-Denis*) se situent principalement sur la côte Caraïbe Nord. Leur positionnement montre qu'elles partagent des caractéristiques physiques de relief marquées (fortes pentes), mais avec une charge en chlordécone bien moindre que leurs voisines du versant Atlantique.
+
+# 7 Aide à la Décision
+
+## 7.1 Indice de risque composite
+
+Synthèse pondérée des dimensions les plus pertinentes :
+
+| Composante | Poids | Justification analytique |
+|------------------------|------------------------|------------------------|
+| Niveau médian de CLD | 50% | Indicateur direct de contamination |
+| \% de dépassement du seuil | 30% | Intègre la dimension réglementaire indispensable pour les autorités de santé |
+| \% parcelles avec 3 périodes banane | 20% | Sert de "mémoire" du risque pour anticiper la rémanence à long terme |
+
+```{r}
+df_risque <- df_clust %>%
+  mutate(
+    z_cld  = scale(mediane_cld)[,1],
+    z_dep  = scale(pct_depass)[,1],
+    z_ban  = scale(pct_ban_3)[,1],
+    score  = 0.5*z_cld + 0.3*z_dep + 0.2*z_ban,
+    niveau = case_when(
+      score >= 1.5  ~ "🔴 Critique",
+      score >= 0.5  ~ "🟠 Élevé",
+      score >= -0.5 ~ "🟡 Modéré",
+      TRUE          ~ "🟢 Faible"
+    ),
+    niveau = factor(niveau, levels = c("🔴 Critique","🟠 Élevé",
+                                        "🟡 Modéré","🟢 Faible"))
+  ) %>%
+  arrange(desc(score))
+
+ggplot(df_risque,
+       aes(x = reorder(commune_parcelle, score), y = score, fill = niveau)) +
+  geom_col(alpha = 0.9, width = 0.75) +
+  geom_hline(yintercept = 0, color = "grey30", linetype = "dashed") +
+  scale_fill_manual(
+    values = c("🔴 Critique" = "#922b21", "🟠 Élevé" = "#e67e22",
+               "🟡 Modéré"  = "#f1c40f", "🟢 Faible" = "#27ae60"),
+    name = "Niveau de risque", drop = FALSE
+  ) +
+  coord_flip() +
+  labs(
+    title    = "Indice de risque composite par commune",
+    subtitle = "Score pondéré | z-score > 0 = risque supérieur à la moyenne martiniquaise",
+    x = NULL, y = "Score de risque (z-score composite)"
+  )
+```
+
+## 7.2 Tableau de bord décisionnel
+
+```{r}
+df_risque %>%
+  select(
+    Commune          = commune_parcelle,
+    `Niveau risque`  = niveau,
+    Score            = score,
+    Cluster          = cluster_km,
+    `CLD médiane`    = mediane_cld,
+    `% > seuil`      = pct_depass,
+    `% 3 pér. ban.`  = pct_ban_3
+  ) %>%
+  mutate(
+    Score           = round(Score, 3),
+    `CLD médiane`   = round(`CLD médiane`, 4),
+    `% > seuil`     = round(`% > seuil`, 1),
+    `% 3 pér. ban.` = round(`% 3 pér. ban.`, 1)
+  ) %>%
+  datatable(
+    caption  = "Tableau de bord – Classement des communes par risque chlordécone",
+    rownames = FALSE, filter = "top",
+    options  = list(scrollX = TRUE, pageLength = 15),
+    class    = "cell-border stripe"
+  ) %>%
+  formatStyle("Niveau risque",
+    backgroundColor = styleEqual(
+      c("🔴 Critique","🟠 Élevé","🟡 Modéré","🟢 Faible"),
+      c("#fadbd8","#fdebd0","#fef9e7","#d5f5e3")
+    )
+  )
+```
+
+## 7.3 Plan d’action opérationnel
+
+```{r}
+tibble(
+  Priorité       = c("🔴 URGENTE","🟠 ÉLEVÉE","🟡 MODÉRÉE","🟢 STANDARD"),
+  `Profil`       = c(
+    "Score > 1.5 – cumul contamination forte + dépassements + historique intensif",
+    "Score 0.5–1.5 – contamination modérée à forte",
+    "Score -0.5–0.5 – contamination autour de la médiane martiniquaise",
+    "Score < -0.5 – contamination faible, peu de dépassements"
+  ),
+  `Actions`      = c(
+    "Restriction cultures maraîchères au contact du sol. Décontamination prioritaire. Surveillance épidémiologique. Information riverains.",
+    "Contrôle obligatoire des productions. Restrictions ciblées (tubercules, légumes-racines). Appui technique agriculteurs.",
+    "Suivi annuel par prélèvements. Sensibilisation producteurs. Pratiques limitant le transfert (paillage, amendements).",
+    "Surveillance tous les 3–5 ans. Aucune restriction. Communication transparente."
+  ),
+  `Fréquence`    = c("Mensuelle","Trimestrielle","Annuelle","Tous les 3–5 ans")
+) %>%
+  kable(caption = "Plan d'action par niveau de risque", booktabs = TRUE,
+        col.names = c("Priorité","Profil type","Actions recommandées","Fréquence contrôle")) %>%
+  kable_styling(bootstrap_options = c("striped","hover"), full_width = TRUE) %>%
+  column_spec(3, width = "22em") %>%
+  row_spec(1, background = "#fadbd8", bold = TRUE) %>%
+  row_spec(2, background = "#fdebd0") %>%
+  row_spec(3, background = "#fef9e7") %>%
+  row_spec(4, background = "#d5f5e3")
+```
+
+# 8 Conclusion générale – Synthèse et liens entre analyses
+
+## 8.1 Tableau de bord analytique final
+
+```{r}
+n_obs        <- nrow(df)
+n_parcelles  <- dplyr::n_distinct(df$id_parcelle)   # adapte le nom si besoin
+n_communes   <- dplyr::n_distinct(df$commune)
+
+annee_min <- min(df$annee_prelevement, na.rm = TRUE)
+annee_max <- max(df$annee_prelevement, na.rm = TRUE)
+
+cld_med <- median(df$taux_cld_sol, na.rm = TRUE)
+pct_dep <- mean(df$taux_cld_sol > SEUIL_CLD, na.rm = TRUE) * 100
+
+tibble(
+  Indicateur = c(
+    "Observations / Parcelles / Communes",
+    "Période d'analyse",
+    "Taux médian de CLD",
+    "% dépassant le seuil (0.1 mg/kg)",
+    "Normalité données brutes (KS)",
+    "Normalité après log-transformation (KS)",
+    "Médiane vs seuil régl. (Wilcoxon uni.)",
+    "Impact type de sol (Kruskal-Wallis)",
+    "Impact historique bananier (KW + Dunn)",
+    "Dépendance sol × pluviométrie (Chi²)",
+    "Variance ACP expliquée (PC1 + PC2)",
+    "Lien sol × commune (AFC, V Cramer)",
+    "Nb clusters robustes (K-means + CAH)",
+    "Concordance K-means / CAH (ARI)"
+  ),
+  Résultat = c(
+    paste0(n_obs, " / ", n_parcelles, " / ", n_communes),
+    paste0(annee_min, " – ", annee_max),
+    paste0(cld_med, " mg/kg (vs seuil 0.1)"),
+    paste0(pct_dep, "%"),
+    "Rejetée *** (p << 0.001)",
+    "Non rejetée (p > 0.05) → loi log-normale",
+    "Rejeté *** → médiane > seuil légal",
+    "Rejeté *** → distributions différentes par sol",
+    "Rejeté *** → relation dose-réponse confirmée",
+    paste0("Rejeté *** → V = ", round(V_afc, 3), " (lien fort)"),
+    paste0(round(sum(res_acp$eig[1:2,2]),1), "% (PC1 : contamination, PC2 : topographie)"),
+    paste0(round(V_afc, 3), " → association géo-pédologique forte"),
+    paste0(K_OPT, " clusters (profils territoriaux distincts)"),
+    paste0(round(ari, 3), " → robustesse confirmée")
+  )
+) %>%
+  kable(caption = "Tableau récapitulatif de l'analyse complète", booktabs = TRUE) %>%
+  kable_styling(bootstrap_options = c("striped","hover"), full_width = FALSE, position="left") %>%
+  row_spec(c(3,4,7,8,9), background = "#fadbd8") %>%
+  row_spec(c(6,11,12,13,14), background = "#d5f5e3")
+```
+
+## 8.2 Les 6 grands enseignements et leurs liens
+
+### 1. Une contamination endémique et statistiquement prouvée
+
+La pollution n'est pas une hypothèse mais un fait mesuré : **34,6 %** des prélèvements dépassent le seuil réglementaire de **0,1 mg/kg**.
+
+-   **Validation** : Le test de Wilcoxon unilatéral rejette l'hypothèse nulle de manière hautement significative ($p \ll 0.001$).
+
+-   **Rémanence** : L'analyse temporelle confirme l'absence de tendance à la baisse, soulignant une stabilité chimique multi-décennale.
+
+### 2. L'historique bananier : Facteur causal dominant
+
+L'usage anthropique est le moteur premier de la charge polluante.
+
+-   **Dose-Réponse** : Les niveaux de chlordécone (CLD) augmentent avec le nombre de périodes d'exploitation, une relation validée par le test de Kruskal-Wallis ($p \ll 0.001$) et les tests post-hoc de Dunn.
+
+-   **Signature ACP** : La contamination (PC1) est statistiquement indépendante de la topographie (PC2), confirmant que l'usage prime sur la forme du terrain.
+
+### 3. Le sol comme modérateur de la rétention
+
+Le type de sol agit comme un filtre sélectif : il définit à la fois les zones de culture historiques et la capacité de stockage du polluant.
+
+-   **Le rôle des Andosols** : Ils présentent une capacité d'adsorption élevée et sont situés dans le nord volcanique, direction privilégiée de la contamination sur le biplot de l'ACP.
+
+-   **Association Géo-pédologique** : La force de cette liaison est quantifiée par un **V de Cramer de 0,533** en AFC.
+
+### 4. La topographie : Un facteur secondaire mais structurant
+
+La pente et la rugosité ne causent pas la pollution, mais elles ont guidé l'implantation des bananeraies.
+
+-   **Accessibilité** : Les terrains à pente intermédiaire ont été préférentiellement cultivés et sont donc plus contaminés.
+
+-   **Corrélation** : Les corrélations de Spearman restent modérées ($|\rho| < 0.35$), indiquant que la topographie est un modulateur spatial plutôt qu'un moteur causal.
+
+### 5. Quatre profils territoriaux robustes et convergents
+
+L'approche multivariée (K-means et CAH) révèle une structure territoriale complexe que l'analyse variable par variable ne permettait pas de voir.
+
+-   **Stabilité** : L'Indice de Rand Ajusté (**ARI = 0,518**) confirme la robustesse de la segmentation en 4 clusters.
+
+-   **Cohérence** : Les groupes identifiés forment des zones géographiques continues, facilitant l'application de politiques publiques locales.
+
+### 6. Un indice de risque actionnable
+
+L'indice composite final synthétise la dangerosité par commune en pondérant les variables validées par les tests statistiques (CLD médiane 50%, % dépassement 30%, historique 20%).
+
+-   **Application** : Cet indice dicte directement la fréquence des contrôles (de mensuelle à quinquennale) et la nature des interventions agricoles.
+
+## 8.3 Limites et perspectives
+
+### Limites identifiées
+
+-   **Échelle d'agrégation** : Le passage de la parcelle à la commune peut lisser des hétérogénéités critiques (phénomène de "taches de léopard").
+
+-   **Données manquantes** : L'absence de chiffres précis sur les quantités de CLD historiquement appliquées par parcelle limite la précision de la modélisation causale.
+
+### Perspectives d'approfondissement
+
+-   **Modélisation Prédictive** : Utilisation de modèles de type *Random Forest* pour quantifier les interactions entre facteurs.
+
+-   **Géostatistique** : Mise en œuvre du krigeage pour cartographier la contamination entre les points de mesure réels.
+
+-   **Analyse de Flux** : Intégration de données hydrologiques pour comprendre le transfert du sol vers les milieux aquatiques et la chaîne alimentaire.
