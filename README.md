@@ -25,7 +25,7 @@ Le projet est structuré en deux phases majeures consultables en ligne :
 La **chlordécone** est un insecticide persistant dont l'usage historique aux Antilles a créé une crise sanitaire et environnementale majeure. Ce travail utilise des jeux de données réels pour :
 - **Identifier** les zones géographiques les plus contaminées.
 - **Caractériser** les profils de sols ou de populations via des méthodes de clustering.
-- **Prédire/Inférer** les niveaux de pollution dans les zones à données manquantes.
+- **Aide à la Décision** recommandations basées sur les données pour l'orientation des politiques publiques.
 
 ##  Plan des livrables
 
