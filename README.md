@@ -55,6 +55,8 @@ La **chlordécone** est un insecticide persistant dont l'usage historique aux An
 ```text
 ├── preparation_chlordecone.Rmd  # Code R de nettoyage (Volet 1)
 ├── analyse_chlordecone.Rmd      # Code R d'analyse (Volet 2)
+├── preparation_chlordecone.html  # Rendu HTML pour GitHub Pages de nettoyage (Volet 1)
+├── analyse_chlordecone.html      # Rendu HTML pour GitHub Pages d'analyse (Volet 2)
 ├── README.Rmd                  # Ce fichier
 ├── data/                       # Données brutes et transformées
-└── docs/                       # Rendu HTML pour GitHub Pages
+└── docs/                       # dictionnaire des données
