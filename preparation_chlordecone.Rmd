@@ -35,15 +35,15 @@ Les principales étapes de préparation sont :
 
 -   import et inspection initiale des données
 
--   rennomage des colonnes
+-   renomage des colonnes
 
 -   nettoyage du contenu des variables qualitatives
 
 -   nettoyage du contenu des variables quantitatives
 
--   Conversion des dates et tests de cohérences
+-   conversion des dates et tests de cohérences
 
--   Détections et suppression des doublons
+-   détection et suppression des doublons
 
 -   analyse et traitement des valeurs manquantes
 
@@ -135,7 +135,7 @@ glimpse(df_brut)
 skim(df_brut)
 ```
 
-# 3. Rennomage des colonnes
+# 3. Renomage des colonnes
 
 Pour une utilisation plus simple de la donnée on va modifier le nom des colonnes comme ceci :
 
@@ -204,7 +204,7 @@ names(df_prep)
 
 Les noms des communes présentaient un format administratif brut (majuscules systématiques et articles post-posés entre parenthèses). Nous avons procédé à une normalisation pour :
 
--   **Améliorer la lisibilité :** Passage au format "Nom Propre" (Première lettre en majuscule).
+-   **Améliorer la lisibilité :** passage au format "Nom Propre" (Première lettre en majuscule).
 
 -   **Repositionner les articles :** (Le, La, Les) en début de nom conformément à la syntaxe française.
 
@@ -318,7 +318,7 @@ table(df_prep_4$sol_simple)
 
 ## 5.1 Conversion taux_5b_hydro_cld
 
-Seul la variable taux_5b_hydro_cld n'est pas afficher correctement et avec le bon type parmis les variables qui sont sensé être numérique. On commence par remplacer les virgules par des points et on converti la variable en numérique.
+Seule la variable taux_5b_hydro_cld n'est pas affichée correctement et avec le bon type parmi les variables qui sont censées être numériques. On commence par remplacer les virgules par des points et on convertit la variable en numérique.
 
 ### Avant transformation :
 
@@ -340,7 +340,7 @@ glimpse(df_prep_5 %>% select(taux_5b_hydro_cld))
 
 ## 5.2 Analyse des variables quantitatives
 
-Maintenant nous allons travailler sur les problème de cohérence et de valeur abberante sur les variables numérique.
+Maintenant nous allons travailler sur les problèmes de cohérence et de valeur aberrante sur les variables numériques.
 
 ### Voici les informations que nous avons concernant les différentes variables avant modification :
 
@@ -384,13 +384,13 @@ p <- plot_ly(data = diagnostic_num) %>%
 p
 ```
 
-Après une analyse des différentes variables voici les différents axes de modification :
+Après une analyse des différentes variables, voici les différents axes de modification :
 
 -   Nettoyage des valeurs infinies pour la variable taux_5b_hydro_cld.
 
--   Suppression des valeurs extrème identifié sur le boxplot pour la variable taux_5b_hydro_cld
+-   Suppression des valeurs extrêmes identifiées sur le boxplot pour la variable taux_5b_hydro_cld
 
--   Conversion de la pente en degré pour la variable mnt_pente ( étant donné les visualisation faite la pente à l'air actuellement d'être en pourcentage et non en degré)
+-   Conversion de la pente en degré pour la variable mnt_pente (étant donné les visualisations faites, la pente semble être en pourcentage et non en degré)
 
 ### Voici les informations que nous avons concernant les différentes variables après modification :
 
@@ -495,19 +495,19 @@ df_date <- df_prep_7 %>%
 summary(df_date %>% select(date_prelevement, date_analyse,date_enreg, interval_temps))
 ```
 
-La variable interval_temps correspond au nombre de jour qu'il y a entre la date de prélevement et la date d'analyse. On voit donc qu'il y a des problème de cohérence en effet cette interval est négatif dans certain cas ce qui n'est pas possible et beaucoup trop haut dans d'autre cas. De plus on peut voir une date anormalement éléver pour la variable date_analyse.
+La variable interval_temps correspond au nombre de jour qu'il y a entre la date de prélevement et la date d'analyse. On voit donc qu'il y a des problèmes de cohérence. En effet, cet intervalle est négatif dans certains cas, ce qui n'est pas possible et beaucoup trop haut dans d'autres cas. De plus on peut voir une date anormalement élévées pour la variable date_analyse.
 
-Ainsi nous allons mettre en place plusieurs contrôle de cohérence et en cas de non respect nous allons remplacer les valeurs par des NA pour le moment.
+Ainsi, nous allons mettre en place plusieurs contrôles de cohérence et en cas de non respect nous allons remplacer les valeurs par des NA pour le moment.
 
 Les contrôles sont :
 
--   Vérifier que les dates sont bien entre 1950 et aujourd'hui (Le chlordécone a été commercialisé en 1958).
+-   Vérifier que les dates sont bien entre 1950 et aujourd'hui (le chlordécone a été commercialisé en 1958).
 
 -   Respect de l'ordre chronolgique des différentes étapes (date_prelevement \< date_enreg et date_prelevement \< date_analyse).
 
-De plus j'ai remplacé les valeurs de la variable annee_prelevement qui correspond maintenant à l'année de prélèvement relever grâce à la variable date_prelevement car celles de la variable annee_prelevement différait trop de l'année de date_prelevement.
+De plus, j'ai remplacé les valeurs de la variable annee_prelevement. Elle correspond désormais à l'année de prélèvement relevée prise grâce à la variable date_prelevement. Car les anciennes valeurs de la variable annee_prelevement différaient trop de l'année de date_prelevement.
 
-### Voici le résultat de ces changement :
+### Voici le résultat de ces changements :
 
 ```{r}
 df_prep_8 <- df_prep_7 %>%
@@ -586,13 +586,13 @@ Une analyse détaillée est donc nécessaire.
 
 ## 8.1 Résumé des valeurs manquantes
 
-Voici les valeurs manquantes et la proportion quelle représente :
+Voici les valeurs manquantes et la proportion qu'elles représentent :
 
 ```{r}
 miss_var_summary(df_prep_9)
 ```
 
-On laissera les date pour lesquels il manque la donnée tel quel car on ne pourra pas procédé par imputation et les supprimé reviendrais à supprimer trop de ligne. De plus le reste des informations peut être utile.
+On laissera les dates pour lesquelles il manque la donnée tel quel car on ne pourra pas procéder par imputation et les supprimer reviendrait à supprimer trop de ligne. De plus, le reste des informations peut être utile.
 
 ## 8.2 Visualisation des valeurs manquantes
 
@@ -650,7 +650,7 @@ miss_var_summary(df_prep_10)
 
 # 10. Traitement de la variable Historique Banane
 
-Pour la variable `histoBanane_Histo_ban`. On ne peut pas imputer les valeurs mais les supprimé représenterais une trop grande perte on va donc ajouter une catégorie "Inconnu" pour les valeurs manquante.
+Pour la variable `histoBanane_Histo_ban`. On ne peut pas imputer les valeurs mais les supprimer représenterait une trop grande perte. On va donc ajouter une catégorie "Inconnu" pour les valeurs manquantes.
 
 ```{r}
 df_prep_11 <- df_prep_10 %>%
@@ -667,7 +667,7 @@ df_prep_11 <- df_prep_10 %>%
 
 ## 11.1 Variable taux_5b_hydro_cld
 
-J'ai essayé plusieur méthode d'imputation que j'ai pu comparer ensuite afin d'utiliser la plus optimale.
+J'ai essayé plusieurs méthodes d'imputation que j'ai pu comparer ensuite afin d'utiliser la plus optimale.
 
 Les différentes méthodes sont :
 
@@ -745,7 +745,7 @@ print(ks_results)
 
 L'évaluation de la qualité de l'imputation pour la variable `taux_5b_hydro_cld` a été réalisée selon les critères de conservation des distributions (Test de Kolmogorov-Smirnov).
 
--   **L'imputation par la moyenne, la médiane et la régression sont rejetés.**
+-   **L'imputation par la moyenne, la médiane et la régression sont rejetées.**
 
 -   **L'algorithme k-NN (k=5)** présente une performance optimale (\$ p\_{value} = 0.999\$), indiquant une préservation quasi-totale de la loi de distribution initiale.
 
@@ -758,7 +758,7 @@ df_prep_12 <- kNN(df_prep_11, variable = "taux_5b_hydro_cld",
 
 ## 11.2 Variable commune_parcelle
 
-J'ai essayé plusieur méthode d'imputation que j'ai pu comparer ensuite afin d'utiliser la plus optimale.
+J'ai essayé plusieurs méthodes d'imputation que j'ai pu comparer ensuite afin d'utiliser la plus optimale.
 
 Les différentes méthodes sont :
 
@@ -816,11 +816,11 @@ df_prep_13 <- kNN(df_prep_12, variable = "commune_parcelle",
                 dist_var = c("coord_x", "coord_y"), k = 5, imp_var = FALSE)
 ```
 
-## 11.3 variable sol_simple
+## 11.3 Variable sol_simple
 
-Ce cas là est un peut différents car les valeurs manquantes ne sont pas répartis uniformément. Ce qui fait que l'on obtient de très mauvais résultat au test du $\chi^2$ (Chi-deux) d'homogénéité. Cependant cela ne veut pas dire que l'imputation est mauvaise mais peut même dire que l'on corrige un biais qui avais été créer.
+Ce cas là est un peu différent car les valeurs manquantes ne sont pas réparties uniformément, ce qui fait que l'on obtient de très mauvais résultats au test du $\chi^2$ (Chi-deux) d'homogénéité. Cependant, cela ne veut pas dire que l'imputation est mauvaise. Cela peut même dire que l'on corrige un biais qui avait été créé.
 
-En effet si l'on regarde la répartitions des valeurs manquantes par communes on voit une grande disparité.
+En effet, si l'on regarde la répartition des valeurs manquantes par commune, on voit une grande disparité.
 
 ```{r}
 # Visualisation du taux de données manquantes par commune
@@ -835,11 +835,11 @@ df_prep_13 %>%
   theme_minimal()
 ```
 
-Cela suggère que le mécanisme de données manquantes n'est pas **MCAR** (Missing Completely At Random) mais **MNAR** (Missing Not At Random), lié à la localisation géographique."
+Cela suggère que le mécanisme de données manquantes n'est pas **MCAR** (Missing Completely At Random) mais **MNAR** (Missing Not At Random), lié à la localisation géographique.
 
-J'ai donc décidé d'utiliser deux méthode d'imputation pour cette variable.
+J'ai donc décidé d'utiliser deux méthodes d'imputation pour cette variable.
 
--   **Mode par Cluster (`id_parcelle`) :** On tilise la cohérence interne. Puisqu'une parcelle a une nature géologique unique, on impute le sol déjà identifié sur d'autres points de la même parcelle. C'est l'application de l'imputation par cluster. Cependant toute les parcelles n'ont pas au moins une valeur on va donc utilisé la deuxième méthode en plus dans c'est cas là.
+-   **Mode par Cluster (`id_parcelle`) :** On utilise la cohérence interne. Puisqu'une parcelle a une nature géologique unique, on impute le sol déjà identifié sur d'autres points de la même parcelle. C'est l'application de l'imputation par cluster. Cependant, toute les parcelles n'ont pas au moins une valeur. On va donc utiliser la deuxième méthode en plus de la première dans ces cas là.
 
 -   **k-NN Spatial (**$k=5$**) :** Utilise la proximité géographique ($X, Y$). On attribue le sol majoritaire des 5 voisins les plus proches. C'est la méthode la plus robuste pour les parcelles n'ayant aucune donnée préalable.
 
@@ -858,7 +858,7 @@ df_comp_sol <- kNN(df_comp_sol, variable = "sol_mode_cluster",
                    dist_var = c("coord_x", "coord_y"), k = 5, imp_var = FALSE)
 ```
 
-Voici le test du $\chi^2$ (Chi-deux) d'homogénéité qui comme prévue ce trouve ne pas être très bon :
+Voici le test du $\chi^2$ (Chi-deux) d'homogénéité qui, comme prévu, se trouve ne pas être très bon :
 
 ```{r}
 # Proportion de référence (données initiales sans NA)
@@ -871,7 +871,7 @@ print(test_chi2_cluster$p.value)
 
 Le V de Cramer permet d'évaluer la conservation de la structure de dépendance entre les variables (Sol et Commune).
 
-On va donc utiliser ce test qui sera beaucoup plus adapter à notre situation. on veut que la deuxième valeur soit le plus proche possible de la première.
+On va donc utiliser ce test qui sera beaucoup plus adapté à notre situation. On veut que la deuxième valeur soit le plus proche possible de la première.
 
 ```{r}
 # 1. Avant imputation (sur les données existantes)
@@ -888,7 +888,7 @@ print(paste("Force du lien (V de Cramer) Avant :", round(V_cramer_avant, 4)))
 print(paste("Force du lien (V de Cramer) Après :", round(V_cramer_apres, 4)))
 ```
 
-On vérifie si après imputation, chaque parcelle n'a toujours qu'un seul type de sol.
+On vérifie, si après imputation, chaque parcelle n'a toujours qu'un seul type de sol.
 
 ```{r}
 # On vérifie si après imputation, chaque parcelle n'a toujours qu'UN SEUL type de sol
@@ -900,7 +900,7 @@ verification_id <- df_comp_sol %>%
 print(nrow(verification_id)) 
 ```
 
-On voit que ça n'est pas le cas, 537 parcelles n'ont pas le même type de sol simple. On vérifie donc le pourcentage que cela représente
+On voit que ce n'est pas le cas : 537 parcelles n'ont pas le même type de sol simple. On vérifie donc le pourcentage que cela représente.
 
 ```{r}
 # Calcul du pourcentage de points "incohérents"
@@ -931,7 +931,7 @@ print(paste("V de Cramer final :", round(V_final, 3)))
 
 Un passage de 0.519 à 0.533 indique que l'imputation a légèrement renforcé la structure logique spatiale sans la dénaturer.
 
-On vérifie si on a régler le problème en regardant de nouveau le nombre de parcelle qui ont plusieurs type de sol simple.
+On vérifie si on a réglé le problème en regardant de nouveau le nombre de parcelles qui ont plusieurs types de sol simple.
 
 ```{r}
 verification_finale <- df_final_propre %>%
@@ -943,13 +943,11 @@ print(nrow(verification_finale))
 # Doit afficher [1] 0
 ```
 
-Comparaison visuel de la répartition avant après du type de sol :
+Comparaison visuelle de la répartition avant/après du type de sol :
 
 ```{r}
-# Exemple pour ton graphique final
 prop_avant <- prop.table(table(df_prep_13$sol_simple))
 prop_apres <- prop.table(table(df_final_propre$sol_simple_final))
-# ... compare les deux ...
 ```
 
 ```{r}
@@ -974,7 +972,7 @@ ggplot(df_plot_comp, aes(x = reorder(Sol, Proportion), y = Proportion, fill = Et
 
 En conclusion, l'arbitrage final a permis de concilier la cohérence micro (respect de l'unité pédologique de la parcelle, 0 conflit final) et la représentativité macro (stabilité du lien Sol/Commune et conservation de la forme de la distribution visuelle).
 
-On voit également sur une carte que les types de sol simple qui ont été ajouté ont été ajouté de manière cohérentes vis à vis de leurs loclisation.
+On voit également sur une carte que les types de sol simple qui ont été ajoutés ont été ajoutés de manière cohérente vis à vis de leur localisation.
 
 ```{r}
 # --- 1. SÉCURISATION DES TYPES ET PRÉPARATION (FACTOR) ---
@@ -1066,9 +1064,9 @@ df_prep_14 <- df_final_propre %>%
   relocate(sol_simple, .after = pluviometrie)
 ```
 
-## 11.4 variable type_sol_detail
+## 11.4 Variable type_sol_detail
 
-On ce retrouve dans une situation similaire à la variable précédente. En effet voici la repartition des valeurs manquante par commune.
+On se retrouve dans une situation similaire à la variable précédente. En effet, voici la repartition des valeurs manquantes par commune.
 
 ```{r}
 # --- 11.4.1 Diagnostic des données manquantes (Type Sol Détail) ---
@@ -1089,7 +1087,7 @@ df_prep_14 %>%
   theme_minimal()
 ```
 
-J’ai donc décidé d’utiliser les deux même méthode d’imputation pour cette variable que pour la variable précédente.
+J’ai donc décidé d’utiliser les deux mêmes méthodes d’imputation pour cette variable que pour la variable précédente.
 
 -   **Mode par Cluster (`id_parcelle`)**
 
@@ -1120,7 +1118,7 @@ df_prep_15 <- kNN(df_prep_15,
                   imp_var = FALSE)
 ```
 
-On va de nouveau utiliser le V de Cramer plutôt que le test du $\chi^2$ (Chi-deux) d'homogénéité. Cela sera beaucoup plus adapter à notre situation. on veut que la deuxième valeur soit le plus proche possible de la première.
+On va de nouveau utiliser le V de Cramer plutôt que le test du $\chi^2$ (Chi-deux) d'homogénéité. Cela sera beaucoup plus adapté à notre situation. On veut que la deuxième valeur soit le plus proche possible de la première.
 
 ```{r}
 # --- 11.4.3 Validation de la structure globale (V de Cramer) ---
@@ -1141,7 +1139,7 @@ print(paste("V de Cramer (Détail) Avant :", round(V_cramer_avant_detail, 4)))
 print(paste("V de Cramer (Détail) Après :", round(V_cramer_apres_detail, 4)))
 ```
 
-On vérifie si après imputation, chaque parcelle n’a toujours qu’un seul type de sol.
+On vérifie si, après imputation, chaque parcelle n’a toujours qu’un seul type de sol.
 
 ```{r}
 # --- 11.4.4 Vérification de l'intégrité parcellaire (Détail) ---
@@ -1157,7 +1155,7 @@ verification_id_detail <- df_prep_15 %>%
 print(paste("Nombre de parcelles avec plusieurs sols détaillés :", nrow(verification_id_detail)))
 ```
 
-On voit que ça n’est pas le cas, 730 parcelles n’ont pas le même type de sol detail. On vérifie donc le pourcentage que cela représente.
+On voit que ce n’est pas le cas, 730 parcelles n’ont pas le même type de sol detail. On vérifie donc le pourcentage que cela représente.
 
 ```{r}
 # --- 11.4.5 Calcul de l'impact des conflits parcellaires (Détail) ---
@@ -1196,7 +1194,7 @@ print(paste("V de Cramer (Détail) Final :", round(V_final_detail, 4)))
 
 Un passage de 0.3466 à 0.3492 indique que l’imputation a légèrement renforcé la structure logique spatiale sans la dénaturer.
 
-On vérifie si on a régler le problème en regardant de nouveau le nombre de parcelle qui ont plusieurs type de sol simple.
+On vérifie si on a réglé le problème en regardant de nouveau le nombre de parcelle qui ont plusieurs types de sol simple.
 
 ```{r}
 # --- 11.4.7 Vérification de la cohérence finale (Détail) ---
@@ -1211,7 +1209,7 @@ verification_finale_detail <- df_prep_16 %>%
 print(paste("Nombre de parcelles en conflit après harmonisation :", nrow(verification_finale_detail)))
 ```
 
-Comparaison de la répartition avant après du type de sol :
+Comparaison de la répartition avant/après du type de sol :
 
 ```{r}
 
@@ -1257,7 +1255,7 @@ datatable(df_plot_comp_fix) %>%
 
 En conclusion, l’arbitrage final a permis de concilier la cohérence micro (respect de l’unité pédologique de la parcelle, 0 conflit final) et la représentativité macro (stabilité du lien Sol/Commune et conservation de la forme de la distribution visuelle).
 
-On voit également sur une carte que les types de sol detail qui ont été ajouté ont été ajouté de manière cohérentes vis à vis de leurs loclisation.
+On voit également sur une carte que les types de sol detail qui ont été ajoutés ont été ajoutés de manière cohérente vis à vis de leur loclisation.
 
 ```{r}
 # On crée une table de correspondance propre pour ne plus avoir de chiffres
@@ -1310,7 +1308,6 @@ p1_clean + p2_clean
 
 ```{r}
 # 1. On crée des dictionnaires STRICTEMENT UNIQUES (une seule ligne par code)
-# C'est la garantie anti-explosion
 dict_detail_unique <- df_prep_16 %>%
   filter(!is.na(type_sol_detail)) %>%
   distinct(type_sol_detail_final, .keep_all = TRUE) %>% 
@@ -1322,10 +1319,7 @@ dict_simple_unique <- df_prep_16 %>%
   distinct(id_parcelle, .keep_all = TRUE)
 
 # 2. On reconstruit df_prep_17 proprement à partir de df_prep_16 
-# (ou df_prep_13 si tu veux être encore plus sûr du nombre de lignes)
 df_prep_17 <- df_prep_16 %>%
-  # On ne garde que les 166k lignes d'origine (ou 31k si c'est ton cas)
-  # en supprimant les colonnes qui vont être renommées
   select(-any_of(c("type_sol_detail", "sol_simple"))) %>%
   
   # Jointure 1 : Détail (Garanti 1 pour 1)
@@ -1349,11 +1343,11 @@ df_prep_17 <- df_prep_16 %>%
 miss_var_summary(df_prep_17)
 ```
 
-Comme vue plutôt il manque des valeurs pour les dates que nous allons laisser comme ça car on ne peut pas les imputé.
+Comme vu plus tôt, il manque des valeurs pour les dates que nous allons laisser comme ça car on ne peut pas les imputer.
 
 # 12. Vérification spatiale
 
-Je cherche à voir si toutes les coordonnées ce trouve bien aux Antilles et non ailleurs ce qui pourrait être du à une faute de frappe.
+Je cherche à voir si toutes les coordonnées se trouvent bien aux Antilles et non ailleurs, ce qui pourrait être dû à une faute de frappe.
 
 ```{r}
 register_stadiamaps(Sys.getenv("STADIA_API_KEY"))
@@ -1412,19 +1406,19 @@ Aucune coordonnée aberrante n'est observée.
 
 Désormais le jeu de données obtenu est cohérent, propre et prêt pour l'analyse exploratoire et la modélisation statistique.
 
-nombre de colonnes de la table nettoyé :
+Nombre de colonnes de la table nettoyée :
 
 ```{r}
 ncol(df_prep_17)
 ```
 
-nombre de ligne de la table nettoyé :
+Nombre de ligne de la table nettoyée :
 
 ```{r}
 nrow(df_prep_17)
 ```
 
-Dernière information sur la table nettoyé :
+Dernière information sur la table nettoyée :
 
 ```{r}
 df_final <- df_prep_17
@@ -1440,7 +1434,7 @@ skim(df_final)
 
 ### Export des données nettoyées
 
-On export les données nettoyé en temps que csv "BaseCLD2026_clean.csv" dans le dossier data
+On exporte les données nettoyées en temps que csv "BaseCLD2026_clean.csv" dans le dossier data
 
 ```{r}
 write_csv(df_final, "data/BaseCLD2026_clean.csv")

@@ -875,7 +875,7 @@ Le sol ne se contente pas de retenir la chlordécone par sa chimie (Andosol) ; i
 
 Puisque ces deux variables sont dépendantes, elles apportent une information redondante. Dans un modèle prédictif, cela suggère que le type de sol est un excellent "proxy" (indicateur indirect) de la pluviométrie passée.
 
-## **Synthèse des tests** 
+## **Synthèse des tests**
 
 L’ensemble des tests confirme et formalise les tendances de l’AED.
 
@@ -1288,7 +1288,7 @@ Le graphique de gauche mesure la variance interne des groupes (plus elle est fai
 
 Ce graphique mesure si une commune est bien classée dans son groupe ou si elle est proche de la frontière avec un autre. Le pic absolu est à $k = 2$, ce qui indique une séparation très nette entre deux grands types de territoires (probablement "Sols volcaniques pollués" vs "Sols sédimentaires préservés"). Bien que le maximum soit à 2, on observe un second plateau relativement stable autour de $k = 4$.
 
-### Verdict : $k = 4$ 
+### Verdict : $k = 4$
 
 Bien que la silhouette suggère 2 groupes, une partition en 4 clusters est souvent préférable pour une aide à la décision publique :
 
